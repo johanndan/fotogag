@@ -6,8 +6,9 @@
 - Next.js 15 (App Router)
 - React Server Components
 - TypeScript
-- Tailwind CSS
+- Tailwind CSS v4 (upgraded from v3)
 - Shadcn UI (Built on Radix UI)
+- HeroUI (beta version for v4 compatibility)
 - Lucide Icons
 - NUQS for URL state management
 - Zustand for client state
@@ -191,6 +192,23 @@
 - [x] Application updates
   - [x] Update existing APIs to handle team context
   - [x] Implement team-specific layouts and page protection
+
+### Phase 6.5: Tailwind CSS v4 Upgrade ✅
+- [x] Package upgrades
+  - [x] Upgrade to Tailwind CSS v4 with PostCSS plugin
+  - [x] Install HeroUI beta version for v4 compatibility
+  - [x] Replace tailwindcss-animate with tw-animate-css
+- [x] Configuration migration
+  - [x] Update PostCSS configuration for v4
+  - [x] Migrate from @tailwind directives to @import statements
+  - [x] Implement CSS-first configuration with @theme inline
+  - [x] Create HeroUI configuration file
+  - [x] Update CSS variables to use hsl() wrappers
+- [x] CSS modernization
+  - [x] Move theme configuration from JavaScript to CSS
+  - [x] Implement @variant directive for dark mode
+  - [x] Convert custom utilities to @utility directive
+  - [x] Maintain compatibility with existing components
 
 ### Phase 7: Polish & Launch
 - [ ] Performance optimization
