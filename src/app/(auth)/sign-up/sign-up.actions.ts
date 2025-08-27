@@ -5,7 +5,12 @@ import { getDB } from "@/db";
 import { userTable, type User } from "@/db/schema";
 import { signUpSchema } from "@/schemas/signup.schema";
 import { hashPassword } from "@/utils/password-hasher";
-import { createSession, generateSessionToken, setSessionTokenCookie, canSignUp } from "@/utils/auth";
+import {
+  createSession,
+  generateSessionToken,
+  setSessionTokenCookie,
+  canSignUp,
+} from "@/utils/auth";
 import { eq } from "drizzle-orm";
 import { createId } from "@paralleldrive/cuid2";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
@@ -16,6 +21,9 @@ import { EMAIL_VERIFICATION_TOKEN_EXPIRATION_SECONDS } from "@/constants";
 import { getIP } from "@/utils/get-IP";
 import { validateTurnstileToken } from "@/utils/validate-captcha";
 import { isTurnstileEnabled } from "@/flags";
+
+// 👇 NEU: Referral-Consumer importieren
+import { consumeReferralOnSignup } from "@/utils/referrals";
 
 /*
  * User signup action.
@@ -78,6 +86,13 @@ export const signUpAction = createServerAction()
         throw new ZSAError("INTERNAL_SERVER_ERROR", "Failed to create user");
       }
 
+      // 👇 NEU: Referral idempotent einlösen (Fehler nicht blockierend)
+      try {
+        await consumeReferralOnSignup({ email: user.email, userId: user.id });
+      } catch (e) {
+        console.error("[referral] consumeReferralOnSignup failed:", e);
+      }
+
       try {
         // Create a session for the new user
         const sessionToken = generateSessionToken();
@@ -96,7 +111,9 @@ export const signUpAction = createServerAction()
 
         // Create and store a verification token in KV
         const verificationToken = createId();
-        const expiresAt = new Date(Date.now() + EMAIL_VERIFICATION_TOKEN_EXPIRATION_SECONDS * 1000);
+        const expiresAt = new Date(
+          Date.now() + EMAIL_VERIFICATION_TOKEN_EXPIRATION_SECONDS * 1000
+        );
         if (!env?.NEXT_INC_CACHE_KV) {
           throw new Error("Can't connect to KV store");
         }
@@ -119,7 +136,10 @@ export const signUpAction = createServerAction()
         });
       } catch (error) {
         console.error(error);
-        throw new ZSAError("INTERNAL_SERVER_ERROR", "Failed to create session after signup");
+        throw new ZSAError(
+          "INTERNAL_SERVER_ERROR",
+          "Failed to create session after signup"
+        );
       }
 
       return { success: true };

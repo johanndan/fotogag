@@ -41,7 +41,7 @@ const PASSKEY_USER_ID_COOKIE_NAME = "passkey_user_id";
  * Startet die Passkey-Registrierung:
  *  - Validiert Captcha & E-Mail (inkl. Disposable-Check)
  *  - Legt den Benutzer in der DB an
- *  - (NEU) Löst ggf. Referral ein und schreibt Credits gut
+ *  - Löst ggf. Referral ein (idempotent, Fehler brechen den Flow nicht)
  *  - Gibt WebAuthn-Options zurück
  */
 export const startPasskeyRegistrationAction = createServerAction()
@@ -92,8 +92,12 @@ export const startPasskeyRegistrationAction = createServerAction()
           throw new ZSAError("INTERNAL_SERVER_ERROR", "Failed to create user");
         }
 
-        // Referral einlösen (idempotent)
-        await consumeReferralOnSignup({ email: user.email!, userId: user.id });
+        // Referral einlösen (idempotent) — Fehler loggen, Flow nicht abbrechen
+        try {
+          await consumeReferralOnSignup({ email: user.email!, userId: user.id });
+        } catch (e) {
+          console.error("[referral] consumeReferralOnSignup failed:", e);
+        }
 
         // WebAuthn-Options für den Client
         const options = await generatePasskeyRegistrationOptions(user.id, input.email);

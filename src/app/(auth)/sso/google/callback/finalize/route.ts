@@ -1,4 +1,4 @@
-// src/app/(auth)/sso/google/callback/route.ts
+// src/app/(auth)/sso/google/callback/finalize/route.ts
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getDB } from "@/db";
@@ -98,12 +98,12 @@ export async function GET(req: Request) {
       }
     }
 
-    // Session setzen — HIER ist der Fix:
+    // Session setzen (Union-Typ erwartet "google-oauth")
     const sessionToken = generateSessionToken();
     const session = await createSession({
       token: sessionToken,
       userId: user.id,
-      authenticationType: "google-oauth", // <-- Fix: nicht "google"
+      authenticationType: "google-oauth",
     });
     await setSessionTokenCookie({
       token: sessionToken,

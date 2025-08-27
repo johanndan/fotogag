@@ -9,27 +9,45 @@ import ReferralInviteEmail from "@/react-email/referral-invite";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import isProd from "./is-prod";
 
-// Hilfsfunktion: Cloudflare-ENV (empfohlen) > process.env (Fallback)
 function envVar(name: string): string | undefined {
   try {
     const { env } = getCloudflareContext();
     // @ts-expect-error index access ok
     const fromEnv = env?.[name];
     if (fromEnv && typeof fromEnv === "string") return fromEnv;
-  } catch {
-    // getCloudflareContext kann in lokalen Tools fehlen – ignorieren
-  }
+  } catch {}
   return process.env?.[name];
 }
 
-// "From" zusammenbauen: nimmt EMAIL_FROM direkt, oder kombiniert NAME + EMAIL_FROM
+/* kritisch: "From" auf Apex-Domain normalisieren */
+function apexHost(): string {
+  const fromSiteUrl = (() => {
+    try { return new URL(SITE_URL).hostname; } catch { return undefined; }
+  })();
+  const base = (fromSiteUrl || SITE_DOMAIN || "photogag.ai").trim();
+  return base.replace(/^https?:\/\//, "").replace(/^www\./, "");
+}
+
+function normalizeFrom(raw: string): string {
+  const host = apexHost();
+  const trimmed = raw.trim();
+  // Formate: "Name <user@domain>" | "user@domain"
+  const m = trimmed.match(/^(.*?<)?([^<@]+)@([^>]+?)(>?$)/);
+  if (!m) return trimmed.includes("@") ? trimmed : `no-reply@${host}`;
+
+  const prefix = m[1] ?? "";   // evtl. "PhotoGag <"
+  const local  = m[2];         // "no-reply"
+  const suffix = m[4] ?? "";   // ">"
+  return `${prefix}${local}@${host}${suffix}`;
+}
+
+/* From zusammenbauen (ENV > Fallback), immer apex-normalisiert */
 function buildFromHeader(): string {
   const configured = envVar("EMAIL_FROM");
   const name = envVar("EMAIL_FROM_NAME");
-  if (configured?.includes("<") && configured.includes(">")) return configured;
-  if (configured && name) return `${name} <${configured}>`;
-  if (configured) return configured;
-  // Sicherheitsfallback – Resend akzeptiert ohne gültigen From nicht.
+  if (configured?.includes("<") && configured.includes(">")) return normalizeFrom(configured);
+  if (configured && name) return normalizeFrom(`${name} <${configured}>`);
+  if (configured) return normalizeFrom(configured);
   throw new Error("EMAIL_FROM is not configured correctly.");
 }
 
@@ -39,7 +57,7 @@ function buildReplyToHeader(override?: string): string | undefined {
   return reply || undefined;
 }
 
-/** === Typen für Provider-Payloads === */
+/** === Typen === */
 interface BrevoEmailOptions {
   to: { email: string; name?: string }[];
   subject: string;
@@ -63,7 +81,6 @@ interface ResendEmailOptions {
 
 type EmailProvider = "resend" | "brevo" | null;
 
-/** === Provider-Auswahl (Secrets/Vars per envVar) === */
 async function getEmailProvider(): Promise<EmailProvider> {
   if (envVar("RESEND_API_KEY")) return "resend";
   if (envVar("BREVO_API_KEY")) return "brevo";
@@ -80,25 +97,22 @@ async function sendResendEmail({
   text,
   tags,
 }: ResendEmailOptions) {
-  // In DEV kein Versand (nur Link loggen). In PROD senden.
   if (!isProd) return;
 
   const apiKey = envVar("RESEND_API_KEY");
-  if (!apiKey) {
-    throw new Error("RESEND_API_KEY is not set (Cloudflare secret missing).");
-  }
+  if (!apiKey) throw new Error("RESEND_API_KEY is not set (Cloudflare secret missing).");
 
   const replyTo = buildReplyToHeader(originalReplyTo);
-  const fromHeader = from ?? buildFromHeader();
+  const fromHeader = normalizeFrom(from ?? buildFromHeader()); // ← Apex erzwingen (z. B. @photogag.ai)
 
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${apiKey}`, // Resend nutzt Bearer Token
+      Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      from: fromHeader, // muss zu verifizierter Resend-Domain gehören
+      from: fromHeader,                 // Resend: "Your Name <sender@domain>"
       to,
       subject,
       html,
@@ -109,21 +123,14 @@ async function sendResendEmail({
   });
 
   if (!res.ok) {
-    // Fehlertext von Resend mitgeben – hilft beim Debuggen (401/422 etc.)
     let details: unknown = {};
-    try {
-      details = await res.json();
-    } catch {}
-    throw new Error(
-      `Failed to send email via Resend (status ${res.status}): ${JSON.stringify(
-        details
-      )}`
-    );
+    try { details = await res.json(); } catch {}
+    throw new Error(`Failed to send email via Resend (status ${res.status}): ${JSON.stringify(details)}`);
   }
   return res.json();
 }
 
-/** === Brevo (Sendinblue) === */
+/** === Brevo === */
 async function sendBrevoEmail({
   to,
   subject,
@@ -137,25 +144,17 @@ async function sendBrevoEmail({
   if (!isProd) return;
 
   const apiKey = envVar("BREVO_API_KEY");
-  if (!apiKey) {
-    throw new Error("BREVO_API_KEY is not set (Cloudflare secret missing).");
-  }
+  if (!apiKey) throw new Error("BREVO_API_KEY is not set (Cloudflare secret missing).");
 
   const replyTo = buildReplyToHeader(originalReplyTo);
-  const fromEmail = envVar("EMAIL_FROM");
+  const fromEmail = normalizeFrom(envVar("EMAIL_FROM") ?? "no-reply@" + apexHost());
   const fromName = envVar("EMAIL_FROM_NAME");
-
-  if (!fromEmail) throw new Error("EMAIL_FROM is not set for Brevo.");
 
   const res = await fetch("https://api.brevo.com/v3/smtp/email", {
     method: "POST",
-    headers: {
-      accept: "application/json",
-      "content-type": "application/json",
-      "api-key": apiKey,
-    },
+    headers: { accept: "application/json", "content-type": "application/json", "api-key": apiKey },
     body: JSON.stringify({
-      sender: { name: fromName, email: fromEmail.replace(/.*<|>|/g, "") },
+      sender: { name: fromName, email: fromEmail.replace(/.*</, "").replace(/>/g, "") },
       to,
       htmlContent,
       textContent,
@@ -169,14 +168,8 @@ async function sendBrevoEmail({
 
   if (!res.ok) {
     let details: unknown = {};
-    try {
-      details = await res.json();
-    } catch {}
-    throw new Error(
-      `Failed to send email via Brevo (status ${res.status}): ${JSON.stringify(
-        details
-      )}`
-    );
+    try { details = await res.json(); } catch {}
+    throw new Error(`Failed to send email via Brevo (status ${res.status}): ${JSON.stringify(details)}`);
   }
   return res.json();
 }
@@ -192,20 +185,12 @@ export async function sendPasswordResetEmail({
   username: string;
 }) {
   const resetUrl = `${SITE_URL}/reset-password?token=${resetToken}`;
-  if (!isProd) {
-    console.warn("Password reset url:", resetUrl);
-    return;
-  }
+  if (!isProd) { console.warn("Password reset url:", resetUrl); return; }
 
-  const html = await render(
-    ResetPasswordEmail({ resetLink: resetUrl, username })
-  );
+  const html = await render(ResetPasswordEmail({ resetLink: resetUrl, username }));
   const provider = await getEmailProvider();
-  if (!provider) {
-    throw new Error(
-      "No email provider configured. Set RESEND_API_KEY or BREVO_API_KEY."
-    );
-  }
+  if (!provider) throw new Error("No email provider configured. Set RESEND_API_KEY or BREVO_API_KEY.");
+
   if (provider === "resend") {
     await sendResendEmail({
       to: [email],
@@ -234,20 +219,12 @@ export async function sendVerificationEmail({
   username: string;
 }) {
   const verificationUrl = `${SITE_URL}/verify-email?token=${verificationToken}`;
-  if (!isProd) {
-    console.warn("Verification url:", verificationUrl);
-    return;
-  }
+  if (!isProd) { console.warn("Verification url:", verificationUrl); return; }
 
-  const html = await render(
-    VerifyEmail({ verificationLink: verificationUrl, username })
-  );
+  const html = await render(VerifyEmail({ verificationLink: verificationUrl, username }));
   const provider = await getEmailProvider();
-  if (!provider) {
-    throw new Error(
-      "No email provider configured. Set RESEND_API_KEY or BREVO_API_KEY."
-    );
-  }
+  if (!provider) throw new Error("No email provider configured. Set RESEND_API_KEY or BREVO_API_KEY.");
+
   if (provider === "resend") {
     await sendResendEmail({
       to: [email],
@@ -275,11 +252,8 @@ export async function sendReferralInvitationEmail({
   invitationToken: string;
   inviterName?: string;
 }) {
-  const inviteUrl = `${SITE_URL}/accept-referral?token=${invitationToken}`;
-  if (!isProd) {
-    console.warn("Referral invite url:", inviteUrl);
-    return;
-  }
+  const inviteUrl = `${SITE_URL}/accept-referral?token=${encodeURIComponent(invitationToken)}`;
+  if (!isProd) { console.warn("Referral invite url:", inviteUrl); return; }
 
   const html = await render(
     <ReferralInviteEmail
@@ -287,12 +261,10 @@ export async function sendReferralInvitationEmail({
       inviterName={inviterName}
     />
   );
+
   const provider = await getEmailProvider();
-  if (!provider) {
-    throw new Error(
-      "No email provider configured. Set RESEND_API_KEY or BREVO_API_KEY."
-    );
-  }
+  if (!provider) throw new Error("No email provider configured. Set RESEND_API_KEY or BREVO_API_KEY.");
+
   const subject = `Du wurdest zu ${SITE_NAME} eingeladen`;
 
   if (provider === "resend") {

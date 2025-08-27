@@ -1,20 +1,19 @@
-import { Metadata } from "next";
-import { getSessionFromCookie } from "@/utils/auth";
+// src/app/(auth)/sso/google/callback/page.tsx
 import { redirect } from "next/navigation";
-import GoogleCallbackClientComponent from "./google-callback.client";
-import { REDIRECT_AFTER_SIGN_IN } from "@/constants";
 
-export const metadata: Metadata = {
-  title: "Sign in with Google",
-  description: "Complete your sign in with Google",
-};
+export default async function GoogleCallbackPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
+  const params = await searchParams;
 
-export default async function GoogleCallbackPage() {
-  const session = await getSessionFromCookie();
-
-  if (session) {
-    return redirect(REDIRECT_AFTER_SIGN_IN);
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params ?? {})) {
+    if (Array.isArray(v)) v.forEach((x) => x != null && qs.append(k, String(x)));
+    else if (v != null) qs.append(k, String(v));
   }
 
-  return <GoogleCallbackClientComponent />;
+  // leitet intern an den Finalizer-Route-Handler weiter (kein Pfadwechsel nach außen)
+  redirect(`/(auth)/sso/google/callback/finalize?${qs.toString()}`);
 }

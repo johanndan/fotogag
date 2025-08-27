@@ -13,9 +13,15 @@ import { and, eq, sql } from "drizzle-orm";
 
 const REFERRAL_TOKEN_COOKIE = "referral_token";
 
-// Optional via ENV konfigurierbar, sonst Defaults
-const INVITER_BONUS = Number(process.env.REFERRAL_INVITER_CREDITS ?? 50);
-const INVITEE_BONUS = Number(process.env.REFERRAL_INVITEE_CREDITS ?? 30);
+// .env → integer (whitespace-safe), mit Defaults
+function intFromEnv(name: string, fallback: number): number {
+  const raw = (process.env[name] ?? "").trim();
+  if (raw === "") return fallback;
+  const val = Number(raw);
+  return Number.isFinite(val) ? val : fallback;
+}
+const INVITER_BONUS = intFromEnv("REFERRAL_INVITER_CREDITS", 50);
+const INVITEE_BONUS = intFromEnv("REFERRAL_INVITEE_CREDITS", 30);
 
 export async function consumeReferralOnSignup(params: {
   email: string;
@@ -26,8 +32,9 @@ export async function consumeReferralOnSignup(params: {
   const token = jar.get(REFERRAL_TOKEN_COOKIE)?.value;
 
   const db = getDB();
+  const now = new Date();
 
-  // ⬇️ einzige Änderung: let → const
+  // Einladung laden: Token (Cookie) bevorzugt, sonst letzte offene Einladung zur E-Mail
   const invitation =
     token
       ? await db.query.referralInvitationTable.findFirst({
@@ -44,74 +51,91 @@ export async function consumeReferralOnSignup(params: {
           orderBy: (t, { desc }) => [desc(t.createdAt)],
         });
 
-  if (!invitation) {
-    return;
-  }
-
-  if (invitation.status !== REFERRAL_INVITATION_STATUS.PENDING) {
-    jar.delete(REFERRAL_TOKEN_COOKIE);
-    return;
-  }
-  if (invitation.expiresAt && invitation.expiresAt.getTime() < Date.now()) {
-    jar.delete(REFERRAL_TOKEN_COOKIE);
-    return;
-  }
-
-  await db
-    .update(referralInvitationTable)
-    .set({
-      status: REFERRAL_INVITATION_STATUS.ACCEPTED,
-      creditsAwarded: INVITER_BONUS,
-      updatedAt: new Date(),
-    })
-    .where(eq(referralInvitationTable.id, invitation.id));
-
-  await db
-    .update(userTable)
-    .set({ referralUserId: invitation.inviterUserId, updatedAt: new Date() })
-    .where(eq(userTable.id, userId));
-
-  if (INVITER_BONUS > 0) {
-    await db
-      .update(userTable)
-      .set({
-        currentCredits: sql`${userTable.currentCredits} + ${INVITER_BONUS}`,
-        updatedAt: new Date(),
-      })
-      .where(eq(userTable.id, invitation.inviterUserId));
-
-    await db.insert(creditTransactionTable).values({
-      id: `ctxn_ref_inv_${invitation.id}`,
-      userId: invitation.inviterUserId,
-      amount: INVITER_BONUS,
-      remainingAmount: INVITER_BONUS,
-      type: CREDIT_TRANSACTION_TYPE.PURCHASE,
-      description: `Referral bonus for inviting ${email}`,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-  }
-
-  if (INVITEE_BONUS > 0) {
-    await db
-      .update(userTable)
-      .set({
-        currentCredits: sql`${userTable.currentCredits} + ${INVITEE_BONUS}`,
-        updatedAt: new Date(),
-      })
-      .where(eq(userTable.id, userId));
-
-    await db.insert(creditTransactionTable).values({
-      id: `ctxn_ref_new_${userId}`,
-      userId,
-      amount: INVITEE_BONUS,
-      remainingAmount: INVITEE_BONUS,
-      type: CREDIT_TRANSACTION_TYPE.PURCHASE,
-      description: `Referral welcome bonus`,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-  }
-
+  // Cookie immer weg; ohne Einladung: raus
   jar.delete(REFERRAL_TOKEN_COOKIE);
+  if (!invitation) return;
+
+  // Guardrails
+  if (invitation.status !== REFERRAL_INVITATION_STATUS.PENDING) return;
+  if (invitation.expiresAt && invitation.expiresAt.getTime() < Date.now()) return;
+
+  const inviterId = invitation.inviterUserId;
+  const inviteeId = userId;
+
+  await db.transaction(async (tx) => {
+    // Einladung als ACCEPTED markieren; nur vorhandene Spalten verwenden
+    await tx
+      .update(referralInvitationTable)
+      .set({
+        status: REFERRAL_INVITATION_STATUS.ACCEPTED,
+        creditsAwarded: INVITER_BONUS,
+        updatedAt: now,
+      })
+      .where(eq(referralInvitationTable.id, invitation.id));
+
+    // Beim Invitee den inviter referenzieren (nur wenn noch leer)
+    await tx
+      .update(userTable)
+      .set({ referralUserId: inviterId, updatedAt: now })
+      .where(and(eq(userTable.id, inviteeId), sql`${userTable.referralUserId} IS NULL`));
+
+    // 1) INVITER Bonus (kein Self-Invite)
+    if (INVITER_BONUS > 0 && inviterId && inviterId !== inviteeId) {
+      const inviterTxnId = `ctxn_ref_inv_${invitation.id}`;
+      const exists = await tx.query.creditTransactionTable.findFirst({
+        where: eq(creditTransactionTable.id, inviterTxnId),
+      });
+      if (!exists) {
+        await tx.insert(creditTransactionTable).values({
+          id: inviterTxnId,
+          userId: inviterId,
+          amount: INVITER_BONUS,
+          remainingAmount: INVITER_BONUS,
+          type: CREDIT_TRANSACTION_TYPE.PURCHASE, // eigener REFERRAL-Typ optional
+          description: `Referral bonus for inviting ${email}`,
+          // externalId nur setzen, wenn in deinem Schema vorhanden
+          // externalId: `referral:${invitation.id}:inviter`,
+          createdAt: now,
+          updatedAt: now,
+        });
+
+        await tx
+          .update(userTable)
+          .set({
+            currentCredits: sql`COALESCE(${userTable.currentCredits}, 0) + ${INVITER_BONUS}`,
+            updatedAt: now,
+          })
+          .where(eq(userTable.id, inviterId));
+      }
+    }
+
+    // 2) INVITEE Bonus (Welcome)
+    if (INVITEE_BONUS > 0) {
+      const inviteeTxnId = `ctxn_ref_new_${inviteeId}`;
+      const exists = await tx.query.creditTransactionTable.findFirst({
+        where: eq(creditTransactionTable.id, inviteeTxnId),
+      });
+      if (!exists) {
+        await tx.insert(creditTransactionTable).values({
+          id: inviteeTxnId,
+          userId: inviteeId,
+          amount: INVITEE_BONUS,
+          remainingAmount: INVITEE_BONUS,
+          type: CREDIT_TRANSACTION_TYPE.PURCHASE,
+          description: `Referral welcome bonus`,
+          // externalId: `referral:${invitation.id}:invitee`,
+          createdAt: now,
+          updatedAt: now,
+        });
+
+        await tx
+          .update(userTable)
+          .set({
+            currentCredits: sql`COALESCE(${userTable.currentCredits}, 0) + ${INVITEE_BONUS}`,
+            updatedAt: now,
+          })
+          .where(eq(userTable.id, inviteeId));
+      }
+    }
+  });
 }
