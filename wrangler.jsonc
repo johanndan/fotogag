@@ -1,68 +1,40 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "account_id": "9ee0671b9e13483d0416f43a1c3c4cf9",
-
   "name": "photogag-app",
   "main": "./custom-worker.mjs",
   "compatibility_date": "2025-03-01",
   "compatibility_flags": [
     "nodejs_compat",
-    "global_fetch_strictly_public",
-    "nodejs_compat_populate_process_env"
+    "global_fetch_strictly_public"
   ],
-
-  // Keep bundles small & startup fast
   "minify": true,
-
   "assets": {
     "binding": "ASSETS",
     "directory": ".open-next/assets"
   },
-
-  "observability": {
-    "enabled": true
-  },
-
-  // Smart placement for better cold-starts
+  "observability": { "enabled": true },
   "placement": { "mode": "smart" },
-
-  // Bind the Worker to your production domain
   "routes": [
     { "pattern": "photogag.ai", "custom_domain": true }
   ],
-
-  // Project-specific non-secret config
   "vars": {
-   "EMAIL_FROM": "support@photogag.ai",
+    "EMAIL_FROM": "PhotoGag <no-reply@mail.photogag.ai>",
     "EMAIL_FROM_NAME": "PhotoGag",
     "EMAIL_REPLY_TO": "support@photogag.ai",
     "NEXT_PUBLIC_APP_URL": "https://photogag.ai"
   },
-
-  // Service self-binding (used by OpenNext)
   "services": [
-    {
-      "binding": "WORKER_SELF_REFERENCE",
-      "service": "photogag-app"
-    }
+    { "binding": "WORKER_SELF_REFERENCE", "service": "photogag-app" }
   ],
-
-    // OpenNext caching Durable Object
-    "durable_objects": {
-      "bindings": [
-        { 
-          "name": "NEXT_CACHE_DO_QUEUE", 
-          "class_name": "DOQueueHandler" 
-        }
-      ]
+  "durable_objects": {
+    "bindings": [
+      { "name": "NEXT_CACHE_DO_QUEUE", "class_name": "DOQueueHandler" }
+    ]
   },
-
-    "migrations": [
-      { "tag": "v1", "new_classes": ["DOQueueHandler"] }
+  "migrations": [
+    { "tag": "v1", "new_classes": ["DOQueueHandler"] }
   ],
-
-
-  // D1 used by OpenNext Tag Cache (rename to photogag-db)
   "d1_databases": [
     {
       "binding": "NEXT_TAG_CACHE_D1",
@@ -71,16 +43,8 @@
       "migrations_dir": "src/db/migrations"
     }
   ],
-
-  // KV used by OpenNext Incremental Cache + Sessions (Lucia)
   "kv_namespaces": [
-    {
-      "binding": "NEXT_INC_CACHE_KV",
-      "id": "3b6c1a004feb4a818ab3054b6df4cdcf" // photogag-kv-cache
-    },
-    {
-      "binding": "NEXT_INC_KV_SESSIONS",
-      "id": "64ad1d8bf8454004a4cab3febb4d66b0" // photogag-kv-session
-    }
+    { "binding": "NEXT_INC_CACHE_KV", "id": "3b6c1a004feb4a818ab3054b6df4cdcf" },
+    { "binding": "NEXT_INC_KV_SESSIONS", "id": "64ad1d8bf8454004a4cab3febb4d66b0" }
   ]
 }
