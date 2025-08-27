@@ -14,21 +14,16 @@
     "lint": "next lint",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings ./cloudflare-env.d.ts",
 
-    // --- D1 Migrations ---
     "db:migrate:dev": "wrangler d1 migrations apply photogag-db --local",
     "db:migrate:preview": "wrangler d1 migrations apply photogag-db --preview",
     "db:migrate:remote": "wrangler d1 migrations apply photogag-db --remote",
 
-    // --- D1 Wartung (Tag-Cache) ---
     "d1:cache:clean": "wrangler d1 execute photogag-db --remote --command \"DELETE FROM tags; DELETE FROM revalidations;\"",
 
-    // --- Drizzle ---
     "db:generate": "drizzle-kit generate --name",
 
-    // --- E-Mails (lokale Vorschau) ---
     "email:dev": "email dev -d src/react-email -p 3001",
 
-    // --- KV-Tools (ohne eigenes Node-Script) ---
     "list:kv": "wrangler kv:key list --binding=NEXT_INC_CACHE_KV --remote | jq -r '.[].name' > kv.log",
     "delete:kv": "wrangler kv:bulk delete --binding=NEXT_INC_CACHE_KV --remote kv.log"
   },
