@@ -1,17 +1,14 @@
-/**
- * For more details on how to configure Wrangler, refer to:
- * https://developers.cloudflare.com/workers/wrangler/configuration/
- */
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "account_id": "9ee0671b9e13483d0416f43a1c3c4cf9",
 
   "name": "photogag-app",
-  "main": ".open-next/worker.js",
+  "main": "./custom-worker.mjs",
   "compatibility_date": "2025-03-01",
   "compatibility_flags": [
     "nodejs_compat",
-    "global_fetch_strictly_public"
+    "global_fetch_strictly_public",
+    "nodejs_compat_populate_process_env"
   ],
 
   // Keep bundles small & startup fast
@@ -36,7 +33,7 @@
 
   // Project-specific non-secret config
   "vars": {
-    "EMAIL_FROM": "no-reply@photogag.ai",
+   "EMAIL_FROM": "support@photogag.ai",
     "EMAIL_FROM_NAME": "PhotoGag",
     "EMAIL_REPLY_TO": "support@photogag.ai",
     "NEXT_PUBLIC_APP_URL": "https://photogag.ai"
@@ -50,23 +47,20 @@
     }
   ],
 
-  // OpenNext caching Durable Object
-  "durable_objects": {
-    "bindings": [
-      {
-        "name": "NEXT_CACHE_DO_QUEUE",
-        "class_name": "DOQueueHandler"
-      }
-    ]
+    // OpenNext caching Durable Object
+    "durable_objects": {
+      "bindings": [
+        { 
+          "name": "NEXT_CACHE_DO_QUEUE", 
+          "class_name": "DOQueueHandler" 
+        }
+      ]
   },
 
-  // DO migration tag (note: use "new_classes")
-  "migrations": [
-    {
-      "tag": "v1",
-      "new_classes": ["DOQueueHandler"]
-    }
+    "migrations": [
+      { "tag": "v1", "new_classes": ["DOQueueHandler"] }
   ],
+
 
   // D1 used by OpenNext Tag Cache (rename to photogag-db)
   "d1_databases": [

@@ -3,7 +3,7 @@ import "server-only";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { headers } from "next/headers";
 
-import { getUserFromDB, getUserTeamsWithPermissions } from "@/utils/auth";
+import { getUserFromDB } from "@/utils/auth";
 import { getIP } from "./get-IP";
 import { MAX_SESSIONS_PER_USER } from "@/constants";
 const SESSION_PREFIX = "session:";
@@ -14,6 +14,12 @@ export function getSessionKey(userId: string, sessionId: string): string {
 
 type KVSessionUser = Exclude<Awaited<ReturnType<typeof getUserFromDB>>, undefined>;
 
+/**
+ * KVSession represents the data stored in our KV backend for each user session.
+ * The team functionality has been removed, so this interface no longer
+ * contains a teams array.  If this interface changes, CURRENT_SESSION_VERSION
+ * must be incremented to force existing sessions to be re-written.
+ */
 export interface KVSession {
   id: string;
   userId: string;
@@ -30,40 +36,17 @@ export interface KVSession {
   authenticationType?: "passkey" | "password" | "google-oauth";
   passkeyCredentialId?: string;
   /**
-   * Teams data - contains list of teams the user is a member of
-   * along with role and permissions data
-   */
-  teams?: {
-    id: string;
-    name: string;
-    slug: string;
-    role: {
-      id: string;
-      name: string;
-      isSystemRole: boolean;
-    };
-    permissions: string[];
-  }[];
-  /**
-   *  !!!!!!!!!!!!!!!!!!!!!
-   *  !!!   IMPORTANT   !!!
-   *  !!!!!!!!!!!!!!!!!!!!!
-   *
-   *  IF YOU MAKE ANY CHANGES TO THIS OBJECT DON'T FORGET TO INCREMENT "CURRENT_SESSION_VERSION" BELOW
-   *  IF YOU FORGET, THE SESSION WILL NOT BE UPDATED IN THE DATABASE
+   * IMPORTANT: increment CURRENT_SESSION_VERSION when modifying this shape.
    */
   version?: number;
 }
 
 /**
- *  !!!!!!!!!!!!!!!!!!!!!
- *  !!!   IMPORTANT   !!!
- *  !!!!!!!!!!!!!!!!!!!!!
- *
- * IF YOU MAKE ANY CHANGES TO THE KVSESSION TYPE ABOVE, YOU NEED TO INCREMENT THIS VERSION.
- * THIS IS HOW WE TRACK WHEN WE NEED TO UPDATE THE SESSIONS IN THE KV STORE.
+ * IMPORTANT: If the KVSession interface above changes, bump this version.  Any
+ * mismatch between stored session version and this value triggers a session
+ * refresh.
  */
-export const CURRENT_SESSION_VERSION = 2;
+export const CURRENT_SESSION_VERSION = 3;
 
 export async function getKV() {
   const { env } = getCloudflareContext();
@@ -82,16 +65,13 @@ export async function createKVSession({
   user,
   authenticationType,
   passkeyCredentialId,
-  teams
 }: CreateKVSessionParams): Promise<KVSession> {
   const { cf } = getCloudflareContext();
   const headersList = await headers();
   const kv = await getKV();
-
   if (!kv) {
     throw new Error("Can't connect to KV store");
   }
-
   const session: KVSession = {
     id: sessionId,
     userId,
@@ -105,175 +85,130 @@ export async function createKVSession({
     user,
     authenticationType,
     passkeyCredentialId,
-    teams,
-    version: CURRENT_SESSION_VERSION
+    version: CURRENT_SESSION_VERSION,
   };
-
-  // Check if user has reached the session limit
+  // Session limit enforcement
   const existingSessions = await getAllSessionIdsOfUser(userId);
-
-  // If user has MAX_SESSIONS_PER_USER or more sessions, delete the oldest one
   if (existingSessions.length >= MAX_SESSIONS_PER_USER) {
     // Sort sessions by expiration time (oldest first)
     const sortedSessions = [...existingSessions].sort((a, b) => {
-      // If a session has no expiration, treat it as oldest
       if (!a.absoluteExpiration) return -1;
       if (!b.absoluteExpiration) return 1;
       return a.absoluteExpiration.getTime() - b.absoluteExpiration.getTime();
     });
-
-    // Delete the oldest session
     const oldestSessionKey = sortedSessions?.[0]?.key;
-    const oldestSessionId = oldestSessionKey?.split(':')?.[2]; // Extract sessionId from key
-
+    const oldestSessionId = oldestSessionKey?.split(':')?.[2];
     await deleteKVSession(oldestSessionId, userId);
   }
-
   await kv.put(
     getSessionKey(userId, sessionId),
     JSON.stringify(session),
     {
-      expirationTtl: Math.floor((expiresAt.getTime() - Date.now()) / 1000)
-    }
+      expirationTtl: Math.floor((expiresAt.getTime() - Date.now()) / 1000),
+    },
   );
-
   return session;
 }
 
 export async function getKVSession(sessionId: string, userId: string): Promise<KVSession | null> {
   const kv = await getKV();
-
   if (!kv) {
     throw new Error("Can't connect to KV store");
   }
-
   const sessionStr = await kv.get(getSessionKey(userId, sessionId));
   if (!sessionStr) return null;
-
-  const session = JSON.parse(sessionStr) as KVSession
-
+  const session = JSON.parse(sessionStr) as KVSession;
   if (session?.user?.createdAt) {
     session.user.createdAt = new Date(session.user.createdAt);
   }
-
   if (session?.user?.updatedAt) {
     session.user.updatedAt = new Date(session.user.updatedAt);
   }
-
   if (session?.user?.lastCreditRefreshAt) {
     session.user.lastCreditRefreshAt = new Date(session.user.lastCreditRefreshAt);
   }
-
   if (session?.user?.emailVerified) {
     session.user.emailVerified = new Date(session.user.emailVerified);
   }
-
   return session;
 }
 
 export async function updateKVSession(sessionId: string, userId: string, expiresAt: Date): Promise<KVSession | null> {
   const session = await getKVSession(sessionId, userId);
   if (!session) return null;
-
   const updatedUser = await getUserFromDB(userId);
-
   if (!updatedUser) {
     throw new Error("User not found");
   }
-
-  // Get updated teams data with permissions
-  const teamsWithPermissions = await getUserTeamsWithPermissions(userId);
-
   const updatedSession: KVSession = {
     ...session,
     version: CURRENT_SESSION_VERSION,
     expiresAt: expiresAt.getTime(),
     user: updatedUser,
-    teams: teamsWithPermissions
   };
-
   const kv = await getKV();
-
   if (!kv) {
     throw new Error("Can't connect to KV store");
   }
-
   await kv.put(
     getSessionKey(userId, sessionId),
     JSON.stringify(updatedSession),
     {
-      expirationTtl: Math.floor((expiresAt.getTime() - Date.now()) / 1000)
-    }
+      expirationTtl: Math.floor((expiresAt.getTime() - Date.now()) / 1000),
+    },
   );
-
   return updatedSession;
 }
 
 export async function deleteKVSession(sessionId: string, userId: string): Promise<void> {
   const session = await getKVSession(sessionId, userId);
   if (!session) return;
-
   const kv = await getKV();
-
   if (!kv) {
     throw new Error("Can't connect to KV store");
   }
-
   await kv.delete(getSessionKey(userId, sessionId));
 }
 
 export async function getAllSessionIdsOfUser(userId: string) {
   const kv = await getKV();
-
   if (!kv) {
     throw new Error("Can't connect to KV store");
   }
-
   const sessions = await kv.list({ prefix: getSessionKey(userId, "") });
-
   return sessions.keys.map((session) => ({
     key: session.name,
-    absoluteExpiration: session.expiration ? new Date(session.expiration * 1000) : undefined
-  }))
+    absoluteExpiration: session.expiration ? new Date(session.expiration * 1000) : undefined,
+  }));
 }
 
 /**
- * Update all sessions of a user. It can only be called in a server actions and api routes.
- * @param userId
+ * Update all sessions of a user.  This function iterates over all sessions and
+ * writes the current user information back to the session.  Team data is no
+ * longer maintained here, so only the user field is updated.
  */
 export async function updateAllSessionsOfUser(userId: string) {
   const sessions = await getAllSessionIdsOfUser(userId);
   const kv = await getKV();
-
   if (!kv) {
     throw new Error("Can't connect to KV store");
   }
-
   const newUserData = await getUserFromDB(userId);
-
   if (!newUserData) return;
-
-  // Get updated teams data with permissions
-  const teamsWithPermissions = await getUserTeamsWithPermissions(userId);
-
   for (const sessionObj of sessions) {
     const session = await kv.get(sessionObj.key);
     if (!session) continue;
-
     const sessionData = JSON.parse(session) as KVSession;
-
-    // Only update non-expired sessions
     if (sessionObj.absoluteExpiration && sessionObj.absoluteExpiration.getTime() > Date.now()) {
       const ttlInSeconds = Math.floor((sessionObj.absoluteExpiration.getTime() - Date.now()) / 1000);
-
       await kv.put(
         sessionObj.key,
         JSON.stringify({
           ...sessionData,
           user: newUserData,
-          teams: teamsWithPermissions,
+          version: CURRENT_SESSION_VERSION,
         }),
-        { expirationTtl: ttlInSeconds }
+        { expirationTtl: ttlInSeconds },
       );
     }
   }

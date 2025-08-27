@@ -1,51 +1,159 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
-# dependencies
-node_modules
+# ─────────────────────────────────────────────────────────────
+# Node / Package Manager
+# ─────────────────────────────────────────────────────────────
+node_modules/
+.pnpm-store/
+*.log
 .pnp
 .pnp.js
 .yarn/install-state.gz
 
-# testing
-/coverage
+# Lockfiles NICHT ignorieren (einen davon checken wir ein)
+# !package-lock.json
+# !yarn.lock
+# !pnpm-lock.yaml
 
-# next.js
-.next
-.react-email
-out
-
-# production
-build
-
-# misc
-.DS_Store
-*.pem
-
-# debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# local env files
-.env*.local
-
-# vercel
-.vercel
-
-# typescript
+# ─────────────────────────────────────────────────────────────
+# Next.js / Build-Outputs
+# ─────────────────────────────────────────────────────────────
+.next/
+out/
+.turbo/
 *.tsbuildinfo
-next-env.d.ts
+.eslintcache
+.react-email
 
-# OpenNext
-/.open-next
-dist
+# Optional: falls eigene Build-Ordner genutzt werden
+dist/
+build/
 
-# wrangler files
-.wrangler
+# ─────────────────────────────────────────────────────────────
+# OpenNext / Cloudflare-Worker Artefakte
+# ─────────────────────────────────────────────────────────────
+.open-next/
+.build/
+.wrangler/
+
+# Miniflare/CF-Dev Nebenprodukte (variieren je nach Setup)
+.mf/
+.miniflare-*/
+
+# ─────────────────────────────────────────────────────────────
+# Cloudflare: lokale Secrets/Variablen
+# ─────────────────────────────────────────────────────────────
+.dev.vars
 .env
 .env.*
-.dev.vars
+!.env.example
+!.env.sample
+.env*.local
+
+# ─────────────────────────────────────────────────────────────
+# Cloudflare D1 / lokale SQLite-Dateien (nicht versionieren)
+# ─────────────────────────────────────────────────────────────
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+*.sqlite-journal
+
+# Migrations sollen versioniert sein:
+# !src/db/migrations/**
+
+# ─────────────────────────────────────────────────────────────
+# Tests / Coverage / E2E Artefakte
+# ─────────────────────────────────────────────────────────────
+coverage/
+.vitest/
+test-results/
+playwright-report/
+blob-report/
+.cypress-cache/
+cypress/screenshots/
+cypress/videos/
+
+# ─────────────────────────────────────────────────────────────
+# React Email (Preview/Cache)
+# ─────────────────────────────────────────────────────────────
+.react-email.json
+
+# ─────────────────────────────────────────────────────────────
+# Editor / OS Dateien
+# ─────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.code-workspace
+.DS_Store
+Thumbs.db
+
+# ─────────────────────────────────────────────────────────────
+# Vercel/Netlify (falls nicht verwendet)
+# ─────────────────────────────────────────────────────────────
+.vercel/
+.netlify/
+
+# ─────────────────────────────────────────────────────────────
+# Projekt-Dokumentation (optional ausdünnen)
+# ─────────────────────────────────────────────────────────────
+**/*.md
+!README.md
+!LICENSE
+!LICENSE.md
+!SECURITY.md
+
+# ─────────────────────────────────────────────────────────────
+# Sonstiges (Screenshots, Dumps, tmp)
+# ─────────────────────────────────────────────────────────────
+*.swp
+*.swo
+*.tmp
+*.temp
+*.orig
+*.bak
+*.patch
+*.tgz
+*.tar
+*.zip
+*.gz
+
+# lokale Assets/Exports abseits von /public (falls vorhanden)
+exports/
+tmp/
+
+# misc
+*.pem
+
+# typescript
+next-env.d.ts
+
+# wrangler files
 .dev.vars*
 !.dev.vars.example
 !.env*example
-*.log
+
+#Cache folder
+.alcache/
+
+#Symbols folder
+.alpackages/
+
+#Snapshots folder
+.snapshots/
+
+#Testing Output folder
+.output/
+
+#Extension App-file
+*.app
+
+#Rapid Application Development File
+rad.json
+
+#Translation Base-file
+*.g.xlf
+
+#License-file
+*.flf
+
+#Test results file
+TestResults.xml

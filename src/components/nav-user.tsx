@@ -1,3 +1,4 @@
+// src/components/nav-user.tsx
 "use client"
 
 import {
@@ -34,6 +35,7 @@ import useSignOut from "@/hooks/useSignOut"
 import { useRouter } from "next/navigation"
 import { useSessionStore } from "@/state/session"
 import ThemeSwitch from "./theme-switch"
+import { getInitials } from "@/utils/name-initials"   // ⬅️ fehlender Import
 
 export function NavUser() {
   const { session, isLoading } = useSessionStore();
@@ -62,12 +64,17 @@ export function NavUser() {
     )
   }
 
-  if (!session?.user) {
-    return null;
-  }
+  if (!session?.user) return null;
 
   const { user } = session;
-  const displayName = user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : user.email;
+  const displayName =
+    user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : (user.email ?? "");
+
+  // Einheitlicher Initialen-Fallback
+  const initials =
+    session.user.initials
+      ?? getInitials(`${user.firstName ?? ""} ${user.lastName ?? ""}`)
+      ?? (user.email ? user.email.slice(0, 2).toUpperCase() : "?");
 
   return (
     <SidebarMenu>
@@ -79,22 +86,29 @@ export function NavUser() {
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground h-14"
             >
               <Avatar className="h-8 w-8 rounded-lg">
-                <AvatarImage src={user.avatar ?? ''} alt={displayName ?? ''} />
-                <AvatarFallback className="rounded-lg">CN</AvatarFallback>
+                <AvatarImage src={user.avatar ?? ''} alt={displayName} />
+                <AvatarFallback>{initials}</AvatarFallback>
               </Avatar>
               <div className="grid flex-1 gap-0.5 text-left text-sm leading-tight">
-                <span className="font-semibold overflow-hidden text-ellipsis whitespace-nowrap">{displayName}</span>
+                <span className="font-semibold overflow-hidden text-ellipsis whitespace-nowrap">
+                  {displayName}
+                </span>
                 <span className="truncate text-xs text-muted-foreground">{user.email}</span>
-                <Badge variant="secondary" className="w-fit text-[10px]" onClick={() => {
-                  setOpenMobile(false)
-                  router.push('/dashboard/billing')
-                }}>
+                <Badge
+                  variant="secondary"
+                  className="w-fit text-[10px]"
+                  onClick={() => {
+                    setOpenMobile(false)
+                    router.push('/dashboard/billing')
+                  }}
+                >
                   {user.currentCredits} credits
                 </Badge>
               </div>
               <ChevronsUpDown className="ml-auto size-4" />
             </SidebarMenuButton>
           </DropdownMenuTrigger>
+
           <DropdownMenuContent
             className="w-[var(--radix-dropdown-menu-trigger-width)] min-w-56 rounded-lg"
             side={isMobile ? "bottom" : "right"}
@@ -104,8 +118,8 @@ export function NavUser() {
             <DropdownMenuLabel className="p-0 font-normal">
               <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                 <Avatar className="h-8 w-8 rounded-lg">
-                  <AvatarImage src={user.avatar ?? ''} alt={displayName ?? ''} />
-                  <AvatarFallback className="rounded-lg">CN</AvatarFallback>
+                  <AvatarImage src={user.avatar ?? ''} alt={displayName} />
+                  <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
                 </Avatar>
                 <div className="grid flex-1 gap-0.5 text-left text-sm leading-tight">
                   <span className="font-semibold">{displayName}</span>
@@ -116,23 +130,29 @@ export function NavUser() {
                 </div>
               </div>
             </DropdownMenuLabel>
+
             <div className="px-2">
-              <ThemeSwitch className="w-full my-3">
-                Change theme
-              </ThemeSwitch>
+              <ThemeSwitch className="w-full my-3">Change theme</ThemeSwitch>
             </div>
+
             <DropdownMenuGroup>
-              <DropdownMenuItem className="cursor-pointer" onClick={() => {
-                setOpenMobile(false)
-                router.push('/settings')
-              }}>
+              <DropdownMenuItem
+                className="cursor-pointer"
+                onClick={() => {
+                  setOpenMobile(false)
+                  router.push('/settings')
+                }}
+              >
                 <BadgeCheck />
                 Account
               </DropdownMenuItem>
-              <DropdownMenuItem className="cursor-pointer" onClick={() => {
-                setOpenMobile(false)
-                router.push('/dashboard/billing')
-              }}>
+              <DropdownMenuItem
+                className="cursor-pointer"
+                onClick={() => {
+                  setOpenMobile(false)
+                  router.push('/dashboard/billing')
+                }}
+              >
                 <CreditCard />
                 Billing
               </DropdownMenuItem>
@@ -141,13 +161,13 @@ export function NavUser() {
                 Notifications
               </DropdownMenuItem>
             </DropdownMenuGroup>
+
             <DropdownMenuSeparator />
+
             <DropdownMenuItem
               onClick={() => {
                 setOpenMobile(false)
-                signOut().then(() => {
-                  router.push('/')
-                })
+                signOut().then(() => router.push('/'))
               }}
               className="cursor-pointer"
             >

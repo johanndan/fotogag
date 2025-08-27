@@ -11,51 +11,51 @@ import {
 
 const features = [
   {
-    name: "Authentication Ready",
+    name: "AI Photo Restoration",
     description:
-      "Complete authentication system with email/password sign in, sign up, forgot password flow, and session management using Lucia Auth.",
+      "Bring old, damaged photos back to life with advanced AI algorithms that repair scratches, restore colors, and enhance details automatically.",
     icon: ShieldCheckIcon,
   },
   {
-    name: "Database & Email",
+    name: "Age Transformation",
     description:
-      "Drizzle ORM with Cloudflare D1 for the database, and React Email with Resend for beautiful email templates.",
+      "See yourself or loved ones at different ages with our powerful AI age transformation technology - younger, older, or anywhere in between.",
     icon: EnvelopeIcon,
   },
   {
-    name: "Modern Stack",
+    name: "Magic AI Effects",
     description:
-      "Next.js 15 App Router with React Server Components, Server Actions, and Edge Runtime for optimal performance.",
+      "Transform your photos with stunning AI-powered filters, artistic styles, and magical effects with just one click.",
     icon: BoltIcon,
   },
   {
-    name: "Beautiful UI",
+    name: "Smart Object Removal",
     description:
-      "Polished UI with Tailwind CSS, Shadcn UI components, dark/light mode, and responsive design out of the box.",
+      "Remove unwanted objects, people, or backgrounds from your photos seamlessly with AI-powered content-aware fill technology.",
     icon: SunIcon,
   },
   {
-    name: "Edge Deployment",
+    name: "Instant Enhancements",
     description:
-      "Deploy globally with Cloudflare Workers for zero cold starts and leverage Cloudflare's edge network for blazing-fast performance.",
+      "Automatically enhance lighting, colors, and composition with AI-powered photo optimization for professional-looking results.",
     icon: CloudIcon,
   },
   {
-    name: "Developer Experience",
+    name: "Batch Processing",
     description:
-      "GitHub Actions for deployment, comprehensive documentation, and TypeScript for type safety.",
+      "Process multiple photos at once with consistent AI enhancements, perfect for restoring entire photo albums or collections.",
     icon: CommandLineIcon,
   },
   {
-    name: "Form Handling",
+    name: "One-Click Magic",
     description:
-      "Built-in form validation with Zod and React Hook Form for a smooth user experience.",
+      "Get stunning results with simple one-click operations - no technical skills or photo editing experience required.",
     icon: RocketLaunchIcon,
   },
   {
-    name: "Team Ready",
+    name: "Privacy First",
     description:
-      "Built with collaboration in mind. Easy to customize and extend with your team's requirements.",
+      "Your photos are processed securely and never stored on our servers. Complete privacy protection for your precious memories.",
     icon: UserGroupIcon,
   },
 ];
@@ -65,15 +65,12 @@ export function Features() {
     <div className="py-24 sm:py-32">
       <div className="mx-auto max-w-7xl px-6 lg:px-8">
         <div className="mx-auto max-w-2xl lg:text-center">
-          <h2 className="text-base font-semibold leading-7 text-indigo-600 dark:text-indigo-400">
-            Production Ready
-          </h2>
           <p className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">
-            Everything you need to build a SaaS
+            AI-Powered Photo Magic
           </p>
           <p className="mt-6 text-lg leading-8 text-muted-foreground">
-            Start with a complete foundation. All the essential features are built-in,
-            so you can focus on what makes your SaaS unique.
+            Rediscover your memories with cutting-edge AI technology. Restore old photos,
+              apply magical effects, and create stunning transformations with just a few clicks.
           </p>
         </div>
         <div className="mx-auto mt-16 max-w-2xl sm:mt-20 lg:mt-24 lg:max-w-none">

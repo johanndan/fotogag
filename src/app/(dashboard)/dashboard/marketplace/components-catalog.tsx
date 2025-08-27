@@ -1,102 +1,86 @@
-import { Boxes } from "lucide-react"
-import { TeamSwitcher } from "@/components/team-switcher"
-import ThemeSwitch from "@/components/theme-switch"
-import SeparatorWithText from "@/components/separator-with-text"
-import { NavUser } from "@/components/nav-user"
-import { Button } from "@/components/ui/button"
-import { PageHeader } from "@/components/page-header"
+"use client";
 
+import { type ReactNode } from "react";
+import ThemeSwitch from "@/components/theme-switch";
+import SeparatorWithText from "@/components/separator-with-text";
+import { NavUser } from "@/components/nav-user";
+import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/page-header";
+
+// Import shared metadata used by the server. We extend it here with preview
+// functions that can only run on the client. Keeping the metadata in a
+// separate module allows server components (such as the marketplace page and
+// purchase action) to consume component information without importing
+// client‑only modules. See components-metadata.ts for the shape of each
+// entry.
+import { COMPONENT_METADATA } from "@/lib/marketplace-metadata";
+
+// Define the shape of a marketplace component card. Each entry includes
+// metadata about the component along with a preview render function.
 interface MarketplaceComponent {
-  id: string
-  name: string
-  description: string
-  credits: number
-  containerClass?: string
-  preview: () => React.ReactNode
+  id: string;
+  name: string;
+  description: string;
+  credits: number;
+  containerClass?: string;
+  preview: () => ReactNode;
 }
 
-interface Team {
-  name: string
-  iconName: string
-  plan: string
-}
-
-const demoTeams: Team[] = [
-  {
-    name: "Acme Inc",
-    iconName: "boxes",
-    plan: "Pro Plan",
-  },
-  {
-    name: "Monsters Inc",
-    iconName: "boxes",
-    plan: "Free Plan",
-  },
-]
-
-export const COMPONENTS: MarketplaceComponent[] = [
-  {
-    id: "team-switcher",
-    name: "Team Switcher",
-    description: "A sleek dropdown menu for switching between teams with custom logos and plans",
-    credits: 4,
-    containerClass: "w-[300px]",
-    preview: () => {
-      const teams = demoTeams.map(team => ({
-        ...team,
-        logo: Boxes,
-      }))
-      return <TeamSwitcher teams={teams} />
-    },
-  },
-  {
-    id: "theme-switch",
-    name: "Theme Switch",
-    description: "An animated theme switcher with system, light, and dark mode options",
-    credits: 4,
-    preview: () => <ThemeSwitch />,
-  },
-  {
-    id: "separator-with-text",
-    name: "Separator With Text",
-    description: "A clean separator component with customizable text and styling",
-    credits: 3,
-    containerClass: "w-full",
-    preview: () => (
-      <SeparatorWithText>
-        <span className="text-muted-foreground">OR</span>
-      </SeparatorWithText>
-    ),
-  },
-  {
-    id: "nav-user",
-    name: "User Navigation Dropdown",
-    description: "A professional user navigation dropdown with avatar, user info, and action items",
-    credits: 10,
-    containerClass: "w-[300px]",
-    preview: () => <NavUser />,
-  },
-  {
-    id: "page-header",
-    name: "Page Header with Breadcrumbs",
-    description: "A responsive page header with collapsible sidebar trigger and breadcrumb navigation",
-    credits: 12,
-    containerClass: "w-full",
-    preview: () => (
-      <PageHeader
-        items={[
-          { href: "/dashboard", label: "Dashboard" },
-          { href: "/dashboard/settings", label: "Settings" },
-        ]}
-      />
-    ),
-  },
-  {
-    id: 'button',
-    name: "Button",
-    description: "A button component with customizable text and styling",
-    credits: 8,
-    containerClass: "w-full flex justify-center",
-    preview: () => <Button>Click me</Button>,
+/**
+ * Components available in the marketplace.
+ *
+ * The team switcher component has been removed because the application
+ * no longer supports teams. Feel free to add additional components here
+ * in the future. Each entry should provide an `id`, `name`, `description`,
+ * `credits` cost and a `preview` function that renders the component.
+ */
+// Build the full list of components by combining the shared metadata with
+// client‑side preview functions. Each entry in COMPONENT_METADATA defines the
+// id, name, description, credits and optional containerClass. Here we attach
+// a preview function that returns the appropriate React node for each id.
+export const COMPONENTS: MarketplaceComponent[] = COMPONENT_METADATA.map((meta) => {
+  switch (meta.id) {
+    case "theme-switch":
+      return {
+        ...meta,
+        preview: () => <ThemeSwitch />, 
+      };
+    case "separator-with-text":
+      return {
+        ...meta,
+        preview: () => (
+          <SeparatorWithText>
+            <span className="text-muted-foreground">OR</span>
+          </SeparatorWithText>
+        ),
+      };
+    case "nav-user":
+      return {
+        ...meta,
+        preview: () => <NavUser />, 
+      };
+    case "page-header":
+      return {
+        ...meta,
+        preview: () => (
+          <PageHeader
+            items={[
+              { href: "/dashboard", label: "Dashboard" },
+              { href: "/dashboard/settings", label: "Settings" },
+            ]}
+          />
+        ),
+      };
+    case "button":
+      return {
+        ...meta,
+        preview: () => <Button>Click me</Button>, 
+      };
+    default:
+      // Fallback: return metadata without preview to avoid runtime errors.
+      return {
+        ...meta,
+        preview: () => null,
+      };
   }
-]
+});

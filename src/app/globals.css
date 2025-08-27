@@ -1,7 +1,5 @@
 @import "tailwindcss";
-/* TODO Currently @tailwindcss/typography is not working with Tailwind v4.0.0 */
-@plugin "@tailwindcss/typography"
-
+@plugin "@tailwindcss/typography";
 @import "tw-animate-css";
 /* TODO Hero UI is not fully compatible with Tailwind v4.0.0 */
 @config "../../hero.ts";

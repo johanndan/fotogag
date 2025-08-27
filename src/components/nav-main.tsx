@@ -33,7 +33,7 @@ export function NavMain({
 
   return (
     <SidebarGroup>
-      <SidebarGroupLabel>Platform</SidebarGroupLabel>
+      <SidebarGroupLabel>Edit</SidebarGroupLabel>
       <SidebarMenu>
         {items.map((item) => {
           // If there are no child items, render a direct link

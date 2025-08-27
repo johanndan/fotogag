@@ -74,7 +74,7 @@ export const RATE_LIMITS = {
   },
   SIGN_UP: {
     identifier: "sign-up",
-    limit: 3,
+    limit: 5,
     windowInSeconds: Math.floor(ms("1 hour") / 1000),
   },
   SIGN_OUT: {
@@ -84,7 +84,7 @@ export const RATE_LIMITS = {
   },
   RESET_PASSWORD: {
     identifier: "auth",
-    limit: 7,
+    limit: 5,
     windowInSeconds: Math.floor(ms("1 hour") / 1000),
   },
   DELETE_SESSION: {
@@ -99,7 +99,7 @@ export const RATE_LIMITS = {
   },
   FORGOT_PASSWORD: {
     identifier: "forgot-password",
-    limit: 4,
+    limit: 5,
     windowInSeconds: Math.floor(ms("1 hour") / 1000),
   },
   SETTINGS: {
@@ -109,12 +109,12 @@ export const RATE_LIMITS = {
   },
   PURCHASE: {
     identifier: "purchase",
-    limit: 25,
+    limit: 250000000,
     windowInSeconds: Math.floor(ms("5 minutes") / 1000),
   },
   TEAM_INVITE: {
     identifier: "team-invite",
-    limit: 5,
+    limit: 50,
     windowInSeconds: Math.floor(ms("1 hour") / 1000),
   },
 } as const;
