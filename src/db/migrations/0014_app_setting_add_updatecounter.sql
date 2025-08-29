@@ -1,0 +1,2 @@
+ALTER TABLE app_setting
+  ADD COLUMN updateCounter INTEGER NOT NULL DEFAULT 0;

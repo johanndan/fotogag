@@ -1,17 +1,13 @@
+// src/app/(auth)/sign-up/sign-up.actions.ts
 "use server";
 
 import { createServerAction, ZSAError } from "zsa";
 import { getDB } from "@/db";
-import { userTable, type User } from "@/db/schema";
+import { userTable, type User, creditTransactionTable, CREDIT_TRANSACTION_TYPE } from "@/db/schema";
 import { signUpSchema } from "@/schemas/signup.schema";
 import { hashPassword } from "@/utils/password-hasher";
-import {
-  createSession,
-  generateSessionToken,
-  setSessionTokenCookie,
-  canSignUp,
-} from "@/utils/auth";
-import { eq } from "drizzle-orm";
+import { createSession, generateSessionToken, setSessionTokenCookie, canSignUp } from "@/utils/auth";
+import { eq, sql } from "drizzle-orm";
 import { createId } from "@paralleldrive/cuid2";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { getVerificationTokenKey } from "@/utils/auth-utils";
@@ -21,18 +17,8 @@ import { EMAIL_VERIFICATION_TOKEN_EXPIRATION_SECONDS } from "@/constants";
 import { getIP } from "@/utils/get-IP";
 import { validateTurnstileToken } from "@/utils/validate-captcha";
 import { isTurnstileEnabled } from "@/flags";
-
-// 👇 NEU: Referral-Consumer importieren
 import { consumeReferralOnSignup } from "@/utils/referrals";
 
-/*
- * User signup action.
- *
- * This action handles user registration with email/password. It performs
- * validation, creates the user in the database, sets up a session, stores
- * a verification token in KV, and sends a verification email. The insert
- * result is normalized to a User type without using the `any` keyword.
- */
 export const signUpAction = createServerAction()
   .input(signUpSchema)
   .handler(async ({ input }) => {
@@ -40,7 +26,6 @@ export const signUpAction = createServerAction()
       const db = getDB();
       const { env } = getCloudflareContext();
 
-      // Validate turnstile captcha if required
       if (await isTurnstileEnabled() && input.captchaToken) {
         const success = await validateTurnstileToken(input.captchaToken);
         if (!success) {
@@ -48,10 +33,8 @@ export const signUpAction = createServerAction()
         }
       }
 
-      // Check if sign up is allowed for this email
       await canSignUp({ email: input.email });
 
-      // Ensure the email isn't already taken
       const existingUser = await db.query.userTable.findFirst({
         where: eq(userTable.email, input.email),
       });
@@ -59,10 +42,9 @@ export const signUpAction = createServerAction()
         throw new ZSAError("CONFLICT", "Email already taken");
       }
 
-      // Hash the password securely
       const hashedPassword = await hashPassword({ password: input.password });
 
-      // Insert the new user and normalize the result to a User type
+      // User anlegen – lastCreditRefreshAt = now, damit Monthly nicht sofort +50 bucht
       const insertResult = await db
         .insert(userTable)
         .values({
@@ -71,6 +53,7 @@ export const signUpAction = createServerAction()
           lastName: input.lastName,
           passwordHash: hashedPassword,
           signUpIpAddress: await getIP(),
+          lastCreditRefreshAt: new Date(),
         })
         .returning();
 
@@ -86,7 +69,32 @@ export const signUpAction = createServerAction()
         throw new ZSAError("INTERNAL_SERVER_ERROR", "Failed to create user");
       }
 
-      // 👇 NEU: Referral idempotent einlösen (Fehler nicht blockierend)
+      // EINMALIGER Sign-up Bonus: +30 für alle neuen Accounts (idempotent)
+      const signupTxnId = `ctxn_signup_${user.id}`;
+      const existsSignupTxn = await db.query.creditTransactionTable.findFirst({
+        where: eq(creditTransactionTable.id, signupTxnId),
+      });
+      if (!existsSignupTxn) {
+        await db.insert(creditTransactionTable).values({
+          id: signupTxnId,
+          userId: user.id,
+          amount: 30,
+          remainingAmount: 30,
+          type: CREDIT_TRANSACTION_TYPE.PURCHASE,
+          description: "Sign-up bonus",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+        await db
+          .update(userTable)
+          .set({
+            currentCredits: sql`COALESCE(${userTable.currentCredits}, 0) + 30`,
+            updatedAt: new Date(),
+          })
+          .where(eq(userTable.id, user.id));
+      }
+
+      // Referral idempotent (nur Einlader +50, kein Invitee-Bonus)
       try {
         await consumeReferralOnSignup({ email: user.email, userId: user.id });
       } catch (e) {
@@ -94,7 +102,6 @@ export const signUpAction = createServerAction()
       }
 
       try {
-        // Create a session for the new user
         const sessionToken = generateSessionToken();
         const session = await createSession({
           token: sessionToken,
@@ -102,33 +109,23 @@ export const signUpAction = createServerAction()
           authenticationType: "password",
         });
 
-        // Set the session cookie
         await setSessionTokenCookie({
           token: sessionToken,
           userId: user.id,
           expiresAt: new Date(session.expiresAt),
         });
 
-        // Create and store a verification token in KV
         const verificationToken = createId();
-        const expiresAt = new Date(
-          Date.now() + EMAIL_VERIFICATION_TOKEN_EXPIRATION_SECONDS * 1000
-        );
+        const expiresAt = new Date(Date.now() + EMAIL_VERIFICATION_TOKEN_EXPIRATION_SECONDS * 1000);
         if (!env?.NEXT_INC_CACHE_KV) {
           throw new Error("Can't connect to KV store");
         }
         await env.NEXT_INC_CACHE_KV.put(
           getVerificationTokenKey(verificationToken),
-          JSON.stringify({
-            userId: user.id,
-            expiresAt: expiresAt.toISOString(),
-          }),
-          {
-            expirationTtl: Math.floor((expiresAt.getTime() - Date.now()) / 1000),
-          }
+          JSON.stringify({ userId: user.id, expiresAt: expiresAt.toISOString() }),
+          { expirationTtl: Math.floor((expiresAt.getTime() - Date.now()) / 1000) }
         );
 
-        // Send the verification email
         await sendVerificationEmail({
           email: user.email,
           verificationToken,
@@ -136,10 +133,7 @@ export const signUpAction = createServerAction()
         });
       } catch (error) {
         console.error(error);
-        throw new ZSAError(
-          "INTERNAL_SERVER_ERROR",
-          "Failed to create session after signup"
-        );
+        throw new ZSAError("INTERNAL_SERVER_ERROR", "Failed to create session after signup");
       }
 
       return { success: true };

@@ -28,6 +28,116 @@ export type User = {
   createdAt: Date
 }
 
+/* ===========================
+   NEU: kompakte Stats-Bar
+   =========================== */
+
+export type UsersStats = {
+  // Registrierungen
+  registered24h: { count: number; emails: string[] }
+  registered30d: { count: number; emails: string[] }
+  registered12m: { count: number; emails: string[] }
+  // Aktivität (Login/Benutzung) – Proxy: updatedAt
+  active24h: { count: number; emails: string[] }
+  active30d: { count: number; emails: string[] }
+}
+
+function PillList({ emails, max = 10 }: { emails: string[]; max?: number }) {
+  const shown = emails.slice(0, max)
+  const more = Math.max(0, emails.length - shown.length)
+  return (
+    <div className="flex flex-wrap gap-1">
+      {shown.map((e, i) => (
+        <Badge key={`${e}-${i}`} variant="secondary" className="font-normal">
+          {e}
+        </Badge>
+      ))}
+      {more > 0 && (
+        <Badge variant="outline" className="font-normal">+{more} more</Badge>
+      )}
+    </div>
+  )
+}
+
+function StatCard({
+  title,
+  subtitle,
+  count,
+  emails,
+}: {
+  title: string
+  subtitle: string
+  count: number
+  emails: string[]
+}) {
+  return (
+    <div className="rounded-2xl border p-4 space-y-2">
+      <div className="text-sm text-muted-foreground">{title}</div>
+      <div className="text-lg font-semibold">{count}</div>
+      <div className="text-xs text-muted-foreground">{subtitle}</div>
+      {emails.length > 0 && <PillList emails={emails} />}
+    </div>
+  )
+}
+
+/**
+ * Exportierte Client-Komponente: direkt unter "Users"
+ * und über der Filter-Leiste rendern.
+ */
+export function UsersStatsBar({ stats }: { stats: UsersStats }) {
+  return (
+    <div className="mt-2 mb-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* Registriert */}
+      <div className="rounded-2xl border p-4">
+        <div className="text-sm font-medium mb-3">Registriert</div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <StatCard
+            title="Letzte 24 h"
+            subtitle="Neue Accounts & Emails"
+            count={stats.registered24h.count}
+            emails={stats.registered24h.emails}
+          />
+          <StatCard
+            title="Letzte 30 Tage"
+            subtitle="Neue Accounts & Emails"
+            count={stats.registered30d.count}
+            emails={stats.registered30d.emails}
+          />
+          <StatCard
+            title="Letzte 12 Monate"
+            subtitle="Neue Accounts & Emails"
+            count={stats.registered12m.count}
+            emails={stats.registered12m.emails}
+          />
+        </div>
+      </div>
+
+      {/* Aktiv */}
+      <div className="rounded-2xl border p-4">
+        <div className="text-sm font-medium mb-3">Aktiv</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <StatCard
+            title="Letzte 24 h"
+            subtitle="Aktive User (Proxy: updatedAt)"
+            count={stats.active24h.count}
+            emails={stats.active24h.emails}
+          />
+          <StatCard
+            title="Letzte 30 Tage"
+            subtitle="Aktive User (Proxy: updatedAt)"
+            count={stats.active30d.count}
+            emails={stats.active30d.emails}
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ===========================
+   Bestehende Tabelle
+   =========================== */
+
 export const columns: ColumnDef<User>[] = [
   {
     accessorKey: "email",

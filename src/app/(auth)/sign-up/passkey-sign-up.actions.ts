@@ -1,3 +1,4 @@
+// src/app/(auth)/sign-up/passkey-sign-up.actions.ts
 "use server";
 
 import { createServerAction, ZSAError } from "zsa";
@@ -7,8 +8,13 @@ import {
   verifyPasskeyRegistration,
 } from "@/utils/webauthn";
 import { getDB } from "@/db";
-import { userTable, type User } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import {
+  userTable,
+  type User,
+  creditTransactionTable,
+  CREDIT_TRANSACTION_TYPE,
+} from "@/db/schema";
+import { eq, sql } from "drizzle-orm";
 import { createId } from "@paralleldrive/cuid2";
 import { cookies, headers } from "next/headers";
 import {
@@ -33,16 +39,17 @@ import { validateTurnstileToken } from "@/utils/validate-captcha";
 import { isTurnstileEnabled } from "@/flags";
 import { consumeReferralOnSignup } from "@/utils/referrals";
 
-// Cookies, die zwischen Start/Abschluss der WebAuthn-Registrierung verwendet werden
+// Cookies für den Passkey-Flow
 const PASSKEY_CHALLENGE_COOKIE_NAME = "passkey_challenge";
 const PASSKEY_USER_ID_COOKIE_NAME = "passkey_user_id";
 
 /**
  * Startet die Passkey-Registrierung:
- *  - Validiert Captcha & E-Mail (inkl. Disposable-Check)
- *  - Legt den Benutzer in der DB an
- *  - Löst ggf. Referral ein (idempotent, Fehler brechen den Flow nicht)
- *  - Gibt WebAuthn-Options zurück
+ *  - Validiert Captcha
+ *  - Legt den Benutzer an (inkl. lastCreditRefreshAt)
+ *  - Sign-up-Bonus 30 (idempotent, COALESCE)
+ *  - Referral (nur Einlader-Bonus) idempotent
+ *  - Liefert WebAuthn-Options zurück
  */
 export const startPasskeyRegistrationAction = createServerAction()
   .input(passkeyEmailSchema)
@@ -57,7 +64,6 @@ export const startPasskeyRegistrationAction = createServerAction()
         }
 
         const db = getDB();
-
         await canSignUp({ email: input.email });
 
         const existingUser = await db.query.userTable.findFirst({
@@ -76,10 +82,11 @@ export const startPasskeyRegistrationAction = createServerAction()
             firstName: input.firstName,
             lastName: input.lastName,
             signUpIpAddress: ipAddress,
+            lastCreditRefreshAt: new Date(), // Initialwert
           })
           .returning();
 
-        // Drizzle D1 kann Array oder D1Result zurückgeben – beides abfangen:
+        // D1 kann Array oder D1Result zurückgeben
         let user: User | undefined;
         if (Array.isArray(insertResult)) {
           user = insertResult[0] as unknown as User;
@@ -92,7 +99,33 @@ export const startPasskeyRegistrationAction = createServerAction()
           throw new ZSAError("INTERNAL_SERVER_ERROR", "Failed to create user");
         }
 
-        // Referral einlösen (idempotent) — Fehler loggen, Flow nicht abbrechen
+        // Sign-up-Bonus (30) genau einmal – idempotent (COALESCE gegen NULL)
+        const signupTxnId = `ctxn_signup_${user.id}`;
+        const exists = await db.query.creditTransactionTable.findFirst({
+          where: eq(creditTransactionTable.id, signupTxnId),
+        });
+        if (!exists) {
+          await db.insert(creditTransactionTable).values({
+            id: signupTxnId,
+            userId: user.id,
+            amount: 30,
+            remainingAmount: 30,
+            type: CREDIT_TRANSACTION_TYPE.PURCHASE,
+            description: "Sign-up bonus",
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          });
+
+          await db
+            .update(userTable)
+            .set({
+              currentCredits: sql`COALESCE(${userTable.currentCredits}, 0) + 30`,
+              updatedAt: new Date(),
+            })
+            .where(eq(userTable.id, user.id));
+        }
+
+        // Referral (nur Einlader bekommt 50, Invitee KEINE Extra-Credits)
         try {
           await consumeReferralOnSignup({ email: user.email!, userId: user.id });
         } catch (e) {
@@ -138,9 +171,9 @@ export const startPasskeyRegistrationAction = createServerAction()
 
 /**
  * Schließt die Passkey-Registrierung ab:
- *  - Verifiziert die WebAuthn-Antwort
+ *  - Verifiziert Antwort
  *  - Versendet Verifikations-E-Mail
- *  - Erstellt Session & setzt Cookie
+ *  - Erstellt Session & Cookie
  */
 const completePasskeyRegistrationSchema = z.object({
   response: z.custom<RegistrationResponseJSON>(

@@ -1,39 +1,42 @@
-// src/app/(auth)/accept-referral/route.ts
-import { cookies } from "next/headers";
+// src/app/accept-referral/route.ts
 import { NextResponse } from "next/server";
-import isProd from "@/utils/is-prod";
+import { cookies } from "next/headers";
+import { getDB } from "@/db";
+import { referralInvitationTable } from "@/db/schema";
+import { and, eq } from "drizzle-orm";
 
-const REFERRAL_COOKIE = "referral_token";
-const COOKIE_DOMAIN = "photogag.ai";
+const REF_COOKIE = "referral_token";
+const REF_COOKIE_MAX_AGE_SEC = 60 * 60 * 24 * 14; // 14 Tage
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
-  const token = (url.searchParams.get("token") ?? "").trim();
+  const token = url.searchParams.get("token");
+  const backTo = new URL("/sign-up?via=ref", url);
+
+  if (!token) return NextResponse.redirect(backTo);
+
+  const db = getDB();
+
+  // optional: Token existiert / gehört zu einer Einladung?
+  const inv = await db.query.referralInvitationTable.findFirst({
+    where: and(
+      eq(referralInvitationTable.token, token),
+      // wenn du E-Mail beim Aufruf noch nicht weißt, nur token prüfen:
+      // eq(referralInvitationTable.status, "PENDING")
+    ),
+  });
+
+  if (!inv) return NextResponse.redirect(backTo);
+
+  // Cookie setzen – NUR hier (Route Handler ist erlaubt)
   const jar = await cookies();
-
-  // vorhandenes Cookie gezielt entfernen: gleiche Attribute + maxAge: 0
-  jar.set(REFERRAL_COOKIE, "", {
+  jar.set(REF_COOKIE, token, {
     httpOnly: true,
-    secure: isProd,
+    secure: true,
     sameSite: "lax",
     path: "/",
-    domain: `.${COOKIE_DOMAIN}`,
-    maxAge: 0,
+    maxAge: REF_COOKIE_MAX_AGE_SEC,
   });
 
-  if (!token) {
-    return NextResponse.redirect(new URL("/sign-up", url));
-  }
-
-  // neues Token 7 Tage setzen
-  jar.set(REFERRAL_COOKIE, token, {
-    httpOnly: true,
-    secure: isProd,
-    sameSite: "lax",
-    path: "/",
-    domain: `.${COOKIE_DOMAIN}`,
-    maxAge: 60 * 60 * 24 * 7,
-  });
-
-  return NextResponse.redirect(new URL("/sign-up?via=ref", url));
+  return NextResponse.redirect(backTo);
 }

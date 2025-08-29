@@ -4,14 +4,11 @@ import type { Route } from "next"
 // Site / branding
 // ──────────────────────────────────────────────────────────────
 export const SITE_NAME = "PhotoGag"
-export const SITE_DESCRIPTION =
-  "AI-powered photo and meme tools."
+export const SITE_DESCRIPTION = "AI-powered photo and meme tools."
 export const SITE_URL =
   process.env.NODE_ENV === "development"
     ? "http://localhost:3000"
     : "https://photogag.ai"
-export const GITHUB_REPO_URL =
-  "https://github.com/johanndan/"
 
 export const SITE_DOMAIN = new URL(SITE_URL).hostname
 

@@ -30,7 +30,7 @@ const ReferralInviteEmail: React.FC<ReferralInviteEmailProps> = ({
       <p>
         <a
           href={acceptUrl}
-          style={{ display: 'inline-block', padding: '12px 20px', backgroundColor: '#2563eb', color: '#ffffff', textDecoration: 'none', borderRadius: '4px' }}
+          style={{ display: 'inline-block', padding: '12px 20px', backgroundColor: '#2563eb', color: '#ffffff', textDecoration: 'none', borderRadius: '5px' }}
         >
           Einladung annehmen
         </a>

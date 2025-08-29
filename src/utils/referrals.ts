@@ -13,15 +13,17 @@ import { and, eq, sql } from "drizzle-orm";
 
 const REFERRAL_TOKEN_COOKIE = "referral_token";
 
-// .env → integer (whitespace-safe), mit Defaults
+// .env → Integer (whitespace-sicher)
 function intFromEnv(name: string, fallback: number): number {
   const raw = (process.env[name] ?? "").trim();
   if (raw === "") return fallback;
-  const val = Number(raw);
-  return Number.isFinite(val) ? val : fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : fallback;
 }
 const INVITER_BONUS = intFromEnv("REFERRAL_INVITER_CREDITS", 50);
-const INVITEE_BONUS = intFromEnv("REFERRAL_INVITEE_CREDITS", 30);
+// WICHTIG: Eingeladene bekommen KEINEN zusätzlichen Referral-Bonus
+// (die 30 Credits kommen aus dem normalen Sign-up-Bonus)
+const INVITEE_BONUS_EFFECTIVE = 0;
 
 export async function consumeReferralOnSignup(params: {
   email: string;
@@ -34,7 +36,7 @@ export async function consumeReferralOnSignup(params: {
   const db = getDB();
   const now = new Date();
 
-  // Einladung laden: Token (Cookie) bevorzugt, sonst letzte offene Einladung zur E-Mail
+  // Einladung suchen: Cookie-Token bevorzugt, sonst letzte offene Einladung für die E-Mail
   const invitation =
     token
       ? await db.query.referralInvitationTable.findFirst({
@@ -51,91 +53,64 @@ export async function consumeReferralOnSignup(params: {
           orderBy: (t, { desc }) => [desc(t.createdAt)],
         });
 
-  // Cookie immer weg; ohne Einladung: raus
+  // Cookie immer aufräumen
   jar.delete(REFERRAL_TOKEN_COOKIE);
-  if (!invitation) return;
 
-  // Guardrails
+  if (!invitation) return;
   if (invitation.status !== REFERRAL_INVITATION_STATUS.PENDING) return;
   if (invitation.expiresAt && invitation.expiresAt.getTime() < Date.now()) return;
 
   const inviterId = invitation.inviterUserId;
   const inviteeId = userId;
 
-  await db.transaction(async (tx) => {
-    // Einladung als ACCEPTED markieren; nur vorhandene Spalten verwenden
-    await tx
-      .update(referralInvitationTable)
-      .set({
-        status: REFERRAL_INVITATION_STATUS.ACCEPTED,
-        creditsAwarded: INVITER_BONUS,
+  // 1) Einladung als ACCEPTED markieren
+  await db
+    .update(referralInvitationTable)
+    .set({
+      status: REFERRAL_INVITATION_STATUS.ACCEPTED,
+      creditsAwarded: INVITER_BONUS,
+      updatedAt: now,
+    })
+    .where(eq(referralInvitationTable.id, invitation.id));
+
+  // 2) Beim Invitee den Referrer nur setzen, wenn noch leer
+  await db
+    .update(userTable)
+    .set({ referralUserId: inviterId, updatedAt: now })
+    .where(and(eq(userTable.id, inviteeId), sql`${userTable.referralUserId} IS NULL`));
+
+  // 3) INVITER-Bonus (kein Self-Invite) — idempotent ohne Transaktion
+  if (INVITER_BONUS > 0 && inviterId && inviterId !== inviteeId) {
+    const inviterTxnId = `ctxn_ref_inv_${invitation.id}`;
+
+    const inviterTxnExists = await db.query.creditTransactionTable.findFirst({
+      where: eq(creditTransactionTable.id, inviterTxnId),
+    });
+
+    if (!inviterTxnExists) {
+      await db.insert(creditTransactionTable).values({
+        id: inviterTxnId,
+        userId: inviterId,
+        amount: INVITER_BONUS,
+        remainingAmount: INVITER_BONUS,
+        type: CREDIT_TRANSACTION_TYPE.PURCHASE, // eigener REFERRAL-Typ optional
+        description: `Referral bonus for inviting ${email}`,
+        createdAt: now,
         updatedAt: now,
-      })
-      .where(eq(referralInvitationTable.id, invitation.id));
-
-    // Beim Invitee den inviter referenzieren (nur wenn noch leer)
-    await tx
-      .update(userTable)
-      .set({ referralUserId: inviterId, updatedAt: now })
-      .where(and(eq(userTable.id, inviteeId), sql`${userTable.referralUserId} IS NULL`));
-
-    // 1) INVITER Bonus (kein Self-Invite)
-    if (INVITER_BONUS > 0 && inviterId && inviterId !== inviteeId) {
-      const inviterTxnId = `ctxn_ref_inv_${invitation.id}`;
-      const exists = await tx.query.creditTransactionTable.findFirst({
-        where: eq(creditTransactionTable.id, inviterTxnId),
       });
-      if (!exists) {
-        await tx.insert(creditTransactionTable).values({
-          id: inviterTxnId,
-          userId: inviterId,
-          amount: INVITER_BONUS,
-          remainingAmount: INVITER_BONUS,
-          type: CREDIT_TRANSACTION_TYPE.PURCHASE, // eigener REFERRAL-Typ optional
-          description: `Referral bonus for inviting ${email}`,
-          // externalId nur setzen, wenn in deinem Schema vorhanden
-          // externalId: `referral:${invitation.id}:inviter`,
-          createdAt: now,
+
+      await db
+        .update(userTable)
+        .set({
+          currentCredits: sql`COALESCE(${userTable.currentCredits}, 0) + ${INVITER_BONUS}`,
           updatedAt: now,
-        });
-
-        await tx
-          .update(userTable)
-          .set({
-            currentCredits: sql`COALESCE(${userTable.currentCredits}, 0) + ${INVITER_BONUS}`,
-            updatedAt: now,
-          })
-          .where(eq(userTable.id, inviterId));
-      }
+        })
+        .where(eq(userTable.id, inviterId));
     }
+  }
 
-    // 2) INVITEE Bonus (Welcome)
-    if (INVITEE_BONUS > 0) {
-      const inviteeTxnId = `ctxn_ref_new_${inviteeId}`;
-      const exists = await tx.query.creditTransactionTable.findFirst({
-        where: eq(creditTransactionTable.id, inviteeTxnId),
-      });
-      if (!exists) {
-        await tx.insert(creditTransactionTable).values({
-          id: inviteeTxnId,
-          userId: inviteeId,
-          amount: INVITEE_BONUS,
-          remainingAmount: INVITEE_BONUS,
-          type: CREDIT_TRANSACTION_TYPE.PURCHASE,
-          description: `Referral welcome bonus`,
-          // externalId: `referral:${invitation.id}:invitee`,
-          createdAt: now,
-          updatedAt: now,
-        });
-
-        await tx
-          .update(userTable)
-          .set({
-            currentCredits: sql`COALESCE(${userTable.currentCredits}, 0) + ${INVITEE_BONUS}`,
-            updatedAt: now,
-          })
-          .where(eq(userTable.id, inviteeId));
-      }
-    }
-  });
+  // 4) KEIN zusätzlicher Invitee-Bonus (Absicht!)
+  if (INVITEE_BONUS_EFFECTIVE > 0) {
+    // bewusst leer – Geschäftslogik: Eingeladene erhalten NUR den allgemeinen Sign-up-Bonus
+  }
 }

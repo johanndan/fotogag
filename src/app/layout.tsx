@@ -10,7 +10,6 @@ import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NextTopLoader from "nextjs-toploader";
 import { SITE_NAME, SITE_DESCRIPTION, SITE_URL } from "@/constants";
-import { AgenticDevStudioStickyBanner } from "@/components/startup-studio-sticky-banner";
 import Script from "next/script";
 
 export const dynamic = "force-dynamic";
@@ -62,14 +61,15 @@ export default function BaseLayout({ children }: Readonly<{ children: React.Reac
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
         <NuqsAdapter>
+          {/* Provide TopLoader before RouterChecker so the hook context is available */}
           <NextTopLoader initialPosition={0.15} shadow="0 0 10px #000, 0 0 5px #000" height={4} />
-          <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
+          {/* ThemeProvider setzt intern attribute='class', defaultTheme='dark', enableSystem und data-cfasync */}
+          <ThemeProvider>
             <TooltipProvider delayDuration={100} skipDelayDuration={50}>
               {children}
             </TooltipProvider>
           </ThemeProvider>
           <Toaster richColors closeButton position="top-right" expand duration={7000} />
-          <AgenticDevStudioStickyBanner />
         </NuqsAdapter>
 
         {cfBeaconToken ? (
@@ -80,6 +80,7 @@ export default function BaseLayout({ children }: Readonly<{ children: React.Reac
             crossOrigin="anonymous"
             data-cf-beacon={JSON.stringify({ token: cfBeaconToken })}
             onError={() => {
+              // no-op
             }}
           />
         ) : null}

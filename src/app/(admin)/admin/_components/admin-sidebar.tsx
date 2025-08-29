@@ -1,10 +1,11 @@
 "use client"
 
 import { type ComponentType } from "react"
-import type { Route } from 'next'
+import type { Route } from "next"
 import {
   Users,
   Shield,
+  Coins,
 } from "lucide-react"
 
 import { NavMain } from "@/components/nav-main"
@@ -38,6 +39,11 @@ const adminNavItems: NavMainItem[] = [
     icon: Users,
     isActive: true,
   },
+  {
+    title: "Credits",
+    url: "/admin/credits" as Route,
+    icon: Coins,
+  },
 ]
 
 export function AdminSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
@@ -47,10 +53,7 @@ export function AdminSidebar({ ...props }: React.ComponentProps<typeof Sidebar>)
         <SidebarGroup>
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton
-                className="pointer-events-none"
-                tooltip="Admin Panel"
-              >
+              <SidebarMenuButton className="pointer-events-none" tooltip="Admin Panel">
                 <Shield size={24} />
                 <span className="text-lg font-bold">Admin Panel</span>
               </SidebarMenuButton>

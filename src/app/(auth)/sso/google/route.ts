@@ -1,9 +1,14 @@
-// src/app/(auth)/sso/google/callback/route.ts
+// src/app/(auth)/sso/google/route.ts
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getDB } from "@/db";
-import { userTable, type User } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import {
+  userTable,
+  type User,
+  creditTransactionTable,
+  CREDIT_TRANSACTION_TYPE,
+} from "@/db/schema";
+import { eq, sql } from "drizzle-orm";
 import { getGoogleSSOClient } from "@/lib/sso/google-sso";
 import {
   GOOGLE_OAUTH_STATE_COOKIE_NAME,
@@ -75,6 +80,7 @@ export async function GET(req: Request) {
           firstName: profile.given_name,
           lastName: profile.family_name,
           signUpIpAddress: await getIP(),
+          lastCreditRefreshAt: new Date(), // Initialwert setzen
         })
         .returning();
 
@@ -83,13 +89,41 @@ export async function GET(req: Request) {
         : ((insertResult as unknown as { [k: number]: unknown })[0] as User);
 
       isNew = true;
+
+      // Sign-up Bonus (30) genau einmal, idempotent
+      const signupTxnId = `ctxn_signup_${user.id}`;
+      const exists = await db.query.creditTransactionTable.findFirst({
+        where: eq(creditTransactionTable.id, signupTxnId),
+      });
+      if (!exists) {
+        await db.insert(creditTransactionTable).values({
+          id: signupTxnId,
+          userId: user.id,
+          amount: 30,
+          remainingAmount: 30,
+          type: CREDIT_TRANSACTION_TYPE.PURCHASE,
+          description: "Sign-up bonus",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+
+        await db
+          .update(userTable)
+          .set({
+            // COALESCE gegen NULL
+            currentCredits: sql`COALESCE(${userTable.currentCredits}, 0) + 30`,
+            updatedAt: new Date(),
+          })
+          .where(eq(userTable.id, user.id));
+      }
     }
 
     if (!user) {
       return NextResponse.redirect(new URL("/", url));
     }
 
-    // Referral nur bei Neuanlage idempotent einlösen
+    // WICHTIG: Referral einlösen nur bei Neuanlage (Invitee erhält KEINE Extracredits –
+    // das macht die implementierte referrals-Logik; nur der Einlader bekommt 50)
     if (isNew) {
       try {
         await consumeReferralOnSignup({ email: user.email!, userId: user.id });
@@ -98,12 +132,12 @@ export async function GET(req: Request) {
       }
     }
 
-    // Session setzen — HIER ist der Fix:
+    // Session setzen (korrekter Typ!)
     const sessionToken = generateSessionToken();
     const session = await createSession({
       token: sessionToken,
       userId: user.id,
-      authenticationType: "google-oauth", // <-- Fix: nicht "google"
+      authenticationType: "google-oauth",
     });
     await setSessionTokenCookie({
       token: sessionToken,
