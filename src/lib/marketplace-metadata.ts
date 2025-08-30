@@ -14,36 +14,41 @@ export interface ComponentMetadata {
 export const COMPONENT_METADATA: ComponentMetadata[] = [
   {
     id: "theme-switch",
-    name: "Theme Switch",
-    description: "An animated theme switcher with system, light, and dark mode options",
-    credits: 4,
+    name: "AI Photo Restoration",
+    description:
+      "Bring old or damaged photos back to life. Repair scratches, revive colors, and sharpen faces in one credit-powered pass.",
+    credits: 500,
   },
   {
     id: "separator-with-text",
-    name: "Separator With Text",
-    description: "A clean separator component with customizable text and styling",
-    credits: 3,
+    name: "Magic Effects & Styles",
+    description:
+      "Give any shot a wow-factor with cinematic filters and artistic styles. One click, stunning transformations—paid with credits only when you run it.",
+    credits: 1000,
     containerClass: "w-full",
   },
   {
     id: "nav-user",
-    name: "User Navigation Dropdown",
-    description: "A professional user navigation dropdown with avatar, user info, and action items",
-    credits: 10,
+    name: "Age Transformation",
+    description:
+      "See yourself younger, older, or anywhere in between. Fun, shareable results—each transformation uses credits, no subscription needed.",
+    credits: 1500,
     containerClass: "w-[300px]",
   },
   {
     id: "page-header",
-    name: "Page Header with Breadcrumbs",
-    description: "A responsive page header with collapsible sidebar trigger and breadcrumb navigation",
-    credits: 12,
+    name: "Smart Object Removal",
+    description:
+      "Erase photobombers, clutter, or backgrounds in seconds with AI fill. Clean, professional results whenever you spend credits.",
+    credits: 2000,
     containerClass: "w-full",
   },
   {
     id: "button",
-    name: "Button",
-    description: "A button component with customizable text and styling",
-    credits: 8,
+    name: "Batch Enhancements",
+    description:
+      "Fix lighting, color, and clarity across many photos at once. Perfect for albums—credits are only used when you process.",
+    credits: 3000,
     containerClass: "w-full flex justify-center",
   },
 ];

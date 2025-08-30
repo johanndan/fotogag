@@ -5,7 +5,9 @@
   "name": "photogag-app",
   "keep_names": false,
   "minify": true,
-  "main": ".open-next/worker.js",
+
+  "main": "./custom-worker.mjs",
+
   "compatibility_date": "2025-03-01",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
 
@@ -32,14 +34,17 @@
     { "binding": "WORKER_SELF_REFERENCE", "service": "photogag-app" }
   ],
 
+  // (OpenNext Caching: "NEXT_CACHE_DO_QUEUE" → class "DOQueueHandler")
   "durable_objects": {
     "bindings": [
-      { "name": "NEXT_CACHE_DO_QUEUE", "class_name": "DOQueueHandler" } // Klassenname muss exakt dem Export entsprechen
+      { "name": "NEXT_CACHE_DO_QUEUE", "class_name": "DOQueueHandler" }
+      // { "name": "NEXT_CACHE_DO_TAG_CACHE", "class_name": "DOShardedTagCache" }
     ]
   },
 
   "migrations": [
-    { "tag": "v1", "new_classes": ["DOQueueHandler"] }
+    { "tag": "v1", "new_sqlite_classes": ["DOQueueHandler"] }
+
   ],
 
   "d1_databases": [
