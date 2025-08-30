@@ -3,10 +3,11 @@
   "account_id": "9ee0671b9e13483d0416f43a1c3c4cf9",
 
   "name": "photogag-app",
-  "main": "./custom-worker.mjs", // wichtig: custom-worker.mjs muss DO-Klasse(n) re-exportieren
+  "keep_names": false,
+  "minify": true,
+  "main": ".open-next/worker.js",
   "compatibility_date": "2025-03-01",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
-  "minify": true,
 
   "assets": {
     "binding": "ASSETS",
@@ -25,7 +26,6 @@
     "EMAIL_FROM_NAME": "PhotoGag.AI",
     "EMAIL_REPLY_TO": "support@photogag.ai",
     "NEXT_PUBLIC_APP_URL": "https://photogag.ai"
-    // REFERRAL_* bleibt in .env (nicht hier)
   },
 
   "services": [

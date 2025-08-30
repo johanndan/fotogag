@@ -46,7 +46,7 @@ export const FREE_MONTHLY_CREDITS = CREDIT_PACKAGES[0].credits * 0.1
 export const MAX_TRANSACTIONS_PER_PAGE = 10
 
 // Default redirect after a successful sign in
-export const REDIRECT_AFTER_SIGN_IN = "/dashboard" as Route
+export const REDIRECT_AFTER_SIGN_IN: Route = "/dashboard";
 
 // ──────────────────────────────────────────────────────────────
 // Referral program

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { Suspense, useEffect, useRef, RefObject, useCallback } from "react";
-import { ThemeProvider as NextThemesProvider, type ThemeProviderProps } from "next-themes";
+import { ThemeProvider as NextThemesProvider } from "next-themes";
 import { HeroUIProvider } from "@heroui/react";
 
 import type { SessionValidationResult } from "@/types";
@@ -11,7 +11,6 @@ import { useConfigStore } from "@/state/config";
 import type { getConfig } from "@/flags";
 
 import { EmailVerificationDialog } from "./email-verification-dialog";
-
 import { useTopLoader } from "nextjs-toploader";
 import { usePathname, useRouter, useSearchParams, useParams } from "next/navigation";
 import { useEventListener, useDebounceCallback } from "usehooks-ts";
@@ -53,18 +52,17 @@ function RouterChecker() {
 export function ThemeProvider({
   children,
   ...props
-}: ThemeProviderProps & { children: React.ReactNode }) {
+}: React.ComponentProps<typeof NextThemesProvider>) {
   const setSession = useSessionStore((s) => s.setSession);
   const setConfig = useConfigStore((s) => s.setConfig);
   const refetchSession = useSessionStore((s) => s.refetchSession);
   const clearSession = useSessionStore((s) => s.clearSession);
 
   const documentRef = useRef<typeof document | null>(typeof window === "undefined" ? null : document);
-  const windowRef = useRef<typeof window | null>(typeof window === "undefined" ? null : window);
 
   const doFetchSession = useCallback(async () => {
     try {
-      refetchSession(); // set loading state
+      refetchSession();
       const response = await fetch("/api/get-session", { credentials: "include" });
       const sessionWithConfig = (await response.json()) as {
         session: SessionValidationResult;
@@ -100,36 +98,19 @@ export function ThemeProvider({
     documentRef as RefObject<Document>
   );
 
-  useEventListener(
-    "focus",
-    () => {
-      fetchSession();
-    },
-    // @ts-expect-error window is not defined on server
-    windowRef
-  );
+  // ohne windowRef: defaultet auf window (kein ts-ignore mehr)
+  useEventListener("focus", () => { fetchSession(); });
 
   useEffect(() => {
     useSessionStore.setState({ fetchSession: doFetchSession });
   }, [doFetchSession]);
-
-  const mergedThemeProps: ThemeProviderProps = {
-    attribute: "class",
-    defaultTheme: "dark",
-    enableSystem: true,
-    ...props,
-    scriptProps: {
-      "data-cfasync": "false",
-      ...(props.scriptProps ?? {}),
-    },
-  };
 
   return (
     <HeroUIProvider>
       <Suspense>
         <RouterChecker />
       </Suspense>
-      <NextThemesProvider {...mergedThemeProps}>
+      <NextThemesProvider {...props} attribute="class" defaultTheme="dark" enableSystem>
         {children}
         <EmailVerificationDialog />
       </NextThemesProvider>
