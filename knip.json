@@ -1,0 +1,52 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+
+  "entry": [
+    "src/app/**/{page,layout,template,loading,not-found,error,route}.{ts,tsx}",
+    "src/app/**/_actions/**/*.{ts,tsx}",
+    "postcss.config.{js,cjs,mjs,ts}"
+  ],
+
+  "project": [
+    "src/**/*.{ts,tsx}"
+  ],
+
+  "ignore": [
+    ".next/**",
+    ".open-next/**",
+    "dist/**",
+    "build/**",
+    "out/**",
+    "public/**",
+    "coverage/**",
+    "drizzle/**",
+    "**/*.d.ts"
+  ],
+
+  "ignoreExportsUsedInFile": true,
+
+  "ignoreDependencies": [
+    "tailwindcss",
+    "@tailwindcss/typography",
+    "tw-animate-css",
+    "eslint",
+    "eslint-config-next"
+  ],
+
+  "rules": {
+    "files": "error",
+    "dependencies": "error",
+    "devDependencies": "error",
+    "unlisted": "error",
+    "unresolved": "error",
+    "exports": "error",
+    "types": "error",
+    "duplicates": "error",
+    "optionalPeerDependencies": "off",
+    "binaries": "off",
+    "nsExports": "off",
+    "nsTypes": "off",
+    "enumMembers": "off",
+    "classMembers": "off"
+  }
+}

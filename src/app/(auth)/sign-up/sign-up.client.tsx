@@ -1,5 +1,7 @@
+// src/app/(auth)/sign-up/sign-up.client.tsx
 "use client";
 
+import type { Route } from "next";
 import { signUpAction } from "./sign-up.actions";
 import { type SignUpSchema, signUpSchema } from "@/schemas/signup.schema";
 import { type PasskeyEmailSchema, passkeyEmailSchema } from "@/schemas/passkey.schema";
@@ -21,65 +23,62 @@ import Link from "next/link";
 import SSOButtons from "../_components/sso-buttons";
 import { useState } from "react";
 import { startRegistration } from "@simplewebauthn/browser";
-import { KeyIcon } from 'lucide-react'
+import { KeyIcon } from "lucide-react";
 import { useConfigStore } from "@/state/config";
 import { REDIRECT_AFTER_SIGN_IN } from "@/constants";
 
-interface SignUpClientProps {
-  redirectPath: string;
-}
+import InviteSetupModal from "@/components/invite-setup-modal";
 
-const SignUpPage = ({ redirectPath }: SignUpClientProps) => {
+export default function SignUpClientComponent({ redirectPath }: { redirectPath: Route }) {
   const { isTurnstileEnabled } = useConfigStore();
   const [isPasskeyModalOpen, setIsPasskeyModalOpen] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
 
   const { execute: signUp } = useServerAction(signUpAction, {
     onError: (error) => {
-      toast.dismiss()
-      toast.error(error.err?.message)
+      toast.dismiss();
+      toast.error(error.err?.message);
     },
     onStart: () => {
-      toast.loading("Creating your account...")
+      toast.loading("Creating your account...");
     },
     onSuccess: () => {
-      toast.dismiss()
-      toast.success("Account created successfully")
-      window.location.href = redirectPath || REDIRECT_AFTER_SIGN_IN
-    }
-  })
+      toast.dismiss();
+      toast.success("Account created successfully");
+      window.location.href = redirectPath || (REDIRECT_AFTER_SIGN_IN as Route);
+    },
+  });
 
   const { execute: completePasskeyRegistration } = useServerAction(completePasskeyRegistrationAction, {
     onError: (error) => {
-      toast.dismiss()
-      toast.error(error.err?.message)
-      setIsRegistering(false)
+      toast.dismiss();
+      toast.error(error.err?.message);
+      setIsRegistering(false);
     },
     onSuccess: () => {
-      toast.dismiss()
-      toast.success("Account created successfully")
-      window.location.href = redirectPath || REDIRECT_AFTER_SIGN_IN
-    }
-  })
+      toast.dismiss();
+      toast.success("Account created successfully");
+      window.location.href = redirectPath || (REDIRECT_AFTER_SIGN_IN as Route);
+    },
+  });
 
   const { execute: startPasskeyRegistration } = useServerAction(startPasskeyRegistrationAction, {
     onError: (error) => {
-      toast.dismiss()
-      toast.error(error.err?.message)
-      setIsRegistering(false)
+      toast.dismiss();
+      toast.error(error.err?.message);
+      setIsRegistering(false);
     },
     onStart: () => {
-      toast.loading("Starting passkey registration...")
-      setIsRegistering(true)
+      toast.loading("Starting passkey registration...");
+      setIsRegistering(true);
     },
     onSuccess: async (response) => {
-      toast.dismiss()
+      toast.dismiss();
       if (!response?.data?.optionsJSON) {
-        toast.error("Failed to start passkey registration")
-        setIsRegistering(false)
+        toast.error("Failed to start passkey registration");
+        setIsRegistering(false);
         return;
       }
-
       try {
         const attResp = await startRegistration({
           optionsJSON: response.data.optionsJSON,
@@ -88,30 +87,20 @@ const SignUpPage = ({ redirectPath }: SignUpClientProps) => {
         await completePasskeyRegistration({ response: attResp });
       } catch (error: unknown) {
         console.error("Failed to register passkey:", error);
-        toast.error("Failed to register passkey")
-        setIsRegistering(false)
+        toast.error("Failed to register passkey");
+        setIsRegistering(false);
       }
-    }
-  })
-
-  const form = useForm<SignUpSchema>({
-    resolver: zodResolver(signUpSchema),
+    },
   });
 
-  const passkeyForm = useForm<PasskeyEmailSchema>({
-    resolver: zodResolver(passkeyEmailSchema),
-  });
+  const form = useForm<SignUpSchema>({ resolver: zodResolver(signUpSchema) });
+  const passkeyForm = useForm<PasskeyEmailSchema>({ resolver: zodResolver(passkeyEmailSchema) });
 
-  const captchaToken = useWatch({ control: form.control, name: 'captchaToken' });
-  const passkeyCaptchaToken = useWatch({ control: passkeyForm.control, name: 'captchaToken' });
+  const captchaToken = useWatch({ control: form.control, name: "captchaToken" });
+  const passkeyCaptchaToken = useWatch({ control: passkeyForm.control, name: "captchaToken" });
 
-  const onSubmit = async (data: SignUpSchema) => {
-    signUp(data)
-  }
-
-  const onPasskeySubmit = async (data: PasskeyEmailSchema) => {
-    startPasskeyRegistration(data)
-  }
+  const onSubmit = async (data: SignUpSchema) => signUp(data);
+  const onPasskeySubmit = async (data: PasskeyEmailSchema) => startPasskeyRegistration(data);
 
   return (
     <div className="min-h-[90vh] flex items-center px-4 justify-center bg-background my-6 md:my-10">
@@ -130,11 +119,7 @@ const SignUpPage = ({ redirectPath }: SignUpClientProps) => {
 
         <div className="space-y-4">
           <SSOButtons />
-
-          <Button
-            className="w-full"
-            onClick={() => setIsPasskeyModalOpen(true)}
-          >
+          <Button className="w-full" onClick={() => setIsPasskeyModalOpen(true)}>
             <KeyIcon className="w-5 h-5 mr-2" />
             Sign up with a Passkey
           </Button>
@@ -146,87 +131,25 @@ const SignUpPage = ({ redirectPath }: SignUpClientProps) => {
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="mt-8 space-y-4">
-            <FormField
-              control={form.control}
-              name="email"
-              render={({ field }) => (
-                <FormItem>
-                  <FormControl>
-                    <Input
-                      type="email"
-                      placeholder="Email address"
-                      className="w-full px-3 py-2"
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="firstName"
-              render={({ field }) => (
-                <FormItem>
-                  <FormControl>
-                    <Input
-                      placeholder="First Name"
-                      className="w-full px-3 py-2"
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="lastName"
-              render={({ field }) => (
-                <FormItem>
-                  <FormControl>
-                    <Input
-                      placeholder="Last Name"
-                      className="w-full px-3 py-2"
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="password"
-              render={({ field }) => (
-                <FormItem>
-                  <FormControl>
-                    <Input
-                      type="password"
-                      placeholder="Password"
-                      className="w-full px-3 py-2"
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <FormField name="email" control={form.control} render={({ field }) => (
+              <FormItem><FormControl><Input type="email" placeholder="Email address" className="w-full px-3 py-2" {...field} /></FormControl><FormMessage /></FormItem>
+            )} />
+            <FormField name="firstName" control={form.control} render={({ field }) => (
+              <FormItem><FormControl><Input placeholder="First Name" className="w-full px-3 py-2" {...field} /></FormControl><FormMessage /></FormItem>
+            )} />
+            <FormField name="lastName" control={form.control} render={({ field }) => (
+              <FormItem><FormControl><Input placeholder="Last Name" className="w-full px-3 py-2" {...field} /></FormControl><FormMessage /></FormItem>
+            )} />
+            <FormField name="password" control={form.control} render={({ field }) => (
+              <FormItem><FormControl><Input type="password" placeholder="Password" className="w-full px-3 py-2" {...field} /></FormControl><FormMessage /></FormItem>
+            )} />
 
             <div className="flex flex-col justify-center items-center">
               <Captcha
-                onSuccess={(token) => form.setValue('captchaToken', token)}
+                onSuccess={(token) => form.setValue("captchaToken", token)}
                 validationError={form.formState.errors.captchaToken?.message}
               />
-
-              <Button
-                type="submit"
-                className="w-full flex justify-center py-2.5 mt-8"
-                disabled={Boolean(isTurnstileEnabled && !captchaToken)}
-              >
+              <Button type="submit" className="w-full flex justify-center py-2.5 mt-8" disabled={Boolean(isTurnstileEnabled && !captchaToken)}>
                 Create Account with Password
               </Button>
             </div>
@@ -236,108 +159,44 @@ const SignUpPage = ({ redirectPath }: SignUpClientProps) => {
         <div className="mt-6">
           <p className="text-xs text-center text-muted-foreground">
             By signing up, you agree to our{" "}
-            <Link href="/terms" className="font-medium text-primary hover:text-primary/90 underline">
-              Terms of Service
-            </Link>{" "}
+            <Link href="/terms" className="font-medium text-primary hover:text-primary/90 underline">Terms of Service</Link>{" "}
             and{" "}
-            <Link href="/privacy" className="font-medium text-primary hover:text-primary/90 underline">
-              Privacy Policy
-            </Link>
+            <Link href="/privacy" className="font-medium text-primary hover:text-primary/90 underline">Privacy Policy</Link>
           </p>
         </div>
       </div>
 
+      {/* Passkey Modal */}
       <Dialog open={isPasskeyModalOpen} onOpenChange={setIsPasskeyModalOpen}>
         <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Sign up with a Passkey</DialogTitle>
-          </DialogHeader>
+          <DialogHeader><DialogTitle>Sign up with a Passkey</DialogTitle></DialogHeader>
           <Form {...passkeyForm}>
             <form onSubmit={passkeyForm.handleSubmit(onPasskeySubmit)} className="space-y-6 mt-6">
-              <FormField
-                control={passkeyForm.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormControl>
-                      <Input
-                        type="email"
-                        placeholder="Email address"
-                        className="w-full px-3 py-2"
-                        disabled={isRegistering}
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={passkeyForm.control}
-                name="firstName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormControl>
-                      <Input
-                        placeholder="First Name"
-                        className="w-full px-3 py-2"
-                        disabled={isRegistering}
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={passkeyForm.control}
-                name="lastName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormControl>
-                      <Input
-                        placeholder="Last Name"
-                        className="w-full px-3 py-2"
-                        disabled={isRegistering}
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <FormField name="email" control={passkeyForm.control} render={({ field }) => (
+                <FormItem><FormControl><Input type="email" placeholder="Email address" className="w-full px-3 py-2" disabled={isRegistering} {...field} /></FormControl><FormMessage /></FormItem>
+              )} />
+              <FormField name="firstName" control={passkeyForm.control} render={({ field }) => (
+                <FormItem><FormControl><Input placeholder="First Name" className="w-full px-3 py-2" disabled={isRegistering} {...field} /></FormControl><FormMessage /></FormItem>
+              )} />
+              <FormField name="lastName" control={passkeyForm.control} render={({ field }) => (
+                <FormItem><FormControl><Input placeholder="Last Name" className="w-full px-3 py-2" disabled={isRegistering} {...field} /></FormControl><FormMessage /></FormItem>
+              )} />
               <div className="flex flex-col justify-center items-center">
                 <Captcha
-                  onSuccess={(token) => passkeyForm.setValue('captchaToken', token)}
+                  onSuccess={(token) => passkeyForm.setValue("captchaToken", token)}
                   validationError={passkeyForm.formState.errors.captchaToken?.message}
                 />
-
-                <Button
-                  type="submit"
-                  className="w-full mt-8"
-                  disabled={isRegistering || Boolean(isTurnstileEnabled && !passkeyCaptchaToken)}
-                >
-                  {isRegistering ? (
-                    <>
-                      <Spinner className="mr-2 h-4 w-4" />
-                      Registering...
-                    </>
-                  ) : (
-                    "Continue"
-                  )}
+                <Button type="submit" className="w-full mt-8" disabled={isRegistering || Boolean(isTurnstileEnabled && !passkeyCaptchaToken)}>
+                  {isRegistering ? (<><Spinner className="mr-2 h-4 w-4" />Registering...</>) : "Continue"}
                 </Button>
               </div>
-              {!isRegistering && (
-                <p className="text-xs text-muted text-center mt-4">
-                  After clicking continue, your browser will prompt you to create and save your Passkey. This will allow you to sign in securely without a password in the future.
-                </p>
-              )}
             </form>
           </Form>
         </DialogContent>
       </Dialog>
+
+      {/* ⬇️ NUR für Einladungen sichtbar (steuert sich über URL-Parameter) */}
+      <InviteSetupModal />
     </div>
   );
-};
-
-export default SignUpPage;
+}

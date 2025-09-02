@@ -1,40 +1,23 @@
+// src/app/(admin)/admin/users/[userId]/page.tsx
 import { getUserData } from "../../_actions/get-user.action";
 import { PageHeader } from "@/components/page-header";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
+  Card, CardContent, CardDescription, CardHeader, CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import {
-  Calendar,
-  Mail,
-  Shield,
-  CreditCard,
-  MapPin,
-  Smartphone,
-  Globe,
-  Key,
+  Calendar, Mail, Shield, CreditCard, MapPin, Smartphone, Globe, Key,
 } from "lucide-react";
 import type { InferSelectModel } from "drizzle-orm";
-import type {
-  creditTransactionTable,
-  passKeyCredentialTable,
-} from "@/db/schema";
+import type { creditTransactionTable, passKeyCredentialTable } from "@/db/schema";
 import DeleteUserButton from "./delete-user-button";
 
 type CreditTransaction = InferSelectModel<typeof creditTransactionTable>;
 type PasskeyCredential = InferSelectModel<typeof passKeyCredentialTable>;
 
-/**
- * WICHTIG: In deinem Projekt erwartet Nexts PageProps offenbar Promise-params.
- * Daher hier explizit als Promise typisieren und überall `await params` verwenden.
- */
 interface UserDetailPageProps {
   params: Promise<{ userId: string }>;
 }
@@ -114,7 +97,7 @@ export default async function UserDetailPage(
                 <Badge variant={user.emailVerified ? "default" : "destructive"}>
                   {user.emailVerified ? "Verified" : "Unverified"}
                 </Badge>
-                <DeleteUserButton userId={user.id} email={user.email} />
+                <DeleteUserButton userId={user.id} />
               </div>
             </div>
           </CardHeader>
@@ -210,7 +193,7 @@ export default async function UserDetailPage(
             </CardContent>
           </Card>
 
-          {/* Credits Information */}
+          {/* Credits */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -248,16 +231,11 @@ export default async function UserDetailPage(
             </CardHeader>
             <CardContent>
               {passkeys.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No passkeys configured
-                </p>
+                <p className="text-sm text-muted-foreground">No passkeys configured</p>
               ) : (
                 <div className="space-y-3">
                   {passkeys.map((passkey: PasskeyCredential) => (
-                    <div
-                      key={passkey.id}
-                      className="border rounded-lg p-3 space-y-2"
-                    >
+                    <div key={passkey.id} className="border rounded-lg p-3 space-y-2">
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium">Passkey</span>
                         <Badge variant="secondary" className="text-xs">
@@ -265,22 +243,15 @@ export default async function UserDetailPage(
                         </Badge>
                       </div>
                       <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-                        <div>
-                          <span className="font-medium">Counter:</span>{" "}
-                          {passkey.counter}
-                        </div>
+                        <div><span className="font-medium">Counter:</span> {passkey.counter}</div>
                         {passkey.aaguid && (
-                          <div>
-                            <span className="font-medium">AAGUID:</span>{" "}
-                            {passkey.aaguid.slice(0, 8)}...
-                          </div>
+                          <div><span className="font-medium">AAGUID:</span> {passkey.aaguid.slice(0, 8)}...</div>
                         )}
                       </div>
                       {passkey.userAgent && (
                         <div className="text-xs text-muted-foreground">
                           <span className="font-medium flex items-center gap-1">
-                            <Smartphone className="h-3 w-3" />
-                            Device:
+                            <Smartphone className="h-3 w-3" /> Device:
                           </span>
                           <p className="mt-1 truncate">{passkey.userAgent}</p>
                         </div>
@@ -298,24 +269,15 @@ export default async function UserDetailPage(
           <Card>
             <CardHeader>
               <CardTitle>Recent Credit Transactions</CardTitle>
-              <CardDescription>
-                Last {transactions.length} credit transactions
-              </CardDescription>
+              <CardDescription>Last {transactions.length} credit transactions</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
                 {transactions.map((tx: CreditTransaction) => (
-                  <div
-                    key={tx.id}
-                    className="flex items-center justify-between p-3 border rounded-lg"
-                  >
+                  <div key={tx.id} className="flex items-center justify-between p-3 border rounded-lg">
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
-                        <Badge
-                          variant={
-                            tx.type === "PURCHASE" ? "default" : "secondary"
-                          }
-                        >
+                        <Badge variant={tx.type === "PURCHASE" ? "default" : "secondary"}>
                           {tx.type}
                         </Badge>
                         {tx.paymentIntentId && (

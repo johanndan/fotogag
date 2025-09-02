@@ -1,3 +1,4 @@
+// src/app/(admin)/admin/users/[userId]/columns.tsx
 "use client";
 
 import * as React from "react";
@@ -10,51 +11,44 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { MoreHorizontal } from "lucide-react";
-import { useTransition } from "react";
-import { deleteUserAction } from "./delete-user.action";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { useServerAction } from "zsa-react";            // ← wichtig
+import { deleteUserAction } from "./delete-user.action";
 
 export type AdminUserRow = {
   id: string;
   email: string | null;
   firstName: string | null;
   lastName: string | null;
-  // ggf. weitere Felder
 };
 
-type ActionsCellProps = {
-  user: AdminUserRow;
-};
+type ActionsCellProps = { user: AdminUserRow };
 
 function ActionsCell({ user }: ActionsCellProps) {
   const router = useRouter();
-  const [isPending, startTransition] = useTransition();
+
+  // ZSA-React: typed execute() mit { userId }
+  const { execute, isPending } = useServerAction(deleteUserAction, {
+    onError: (err) => {
+      // err.err?.message ist das, was wir in der Action via ZSAError liefern
+      toast.error(err.err?.message ?? "Delete failed");
+    },
+    onSuccess: () => {
+      toast.success(`User "${user.email ?? user.id}" deleted`);
+      // Liste aktualisieren
+      router.refresh();
+    },
+  });
 
   const onDelete = React.useCallback(() => {
     const email = user.email ?? user.id;
-    if (
-      !confirm(
-        `Delete user "${email}"?\n\nThis action is irreversible. Continue?`
-      )
-    ) {
+    if (!confirm(`Delete user "${email}"?\n\nThis action is irreversible. Continue?`)) {
       return;
     }
-    startTransition(async () => {
-      try {
-        const res = await deleteUserAction({ userId: user.id });
-        if ((res as { success?: boolean })?.success) {
-          toast.success(`User "${email}" deleted`);
-          router.refresh();
-        } else {
-          toast.error("Failed to delete user");
-        }
-      } catch (e: unknown) {
-        const err = e as { err?: { message?: string } };
-        toast.error(err?.err?.message ?? "Failed to delete user");
-      }
-    });
-  }, [router, user.email, user.id]);
+    // WICHTIG: kein FormData – Action will { userId }
+    execute({ userId: user.id });
+  }, [execute, user.id, user.email]);
 
   return (
     <DropdownMenu>
@@ -69,7 +63,6 @@ function ActionsCell({ user }: ActionsCellProps) {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        {/* Platz für weitere Aktionen wie View/Edit */}
         <DropdownMenuItem
           className="text-destructive focus:text-destructive"
           onSelect={(e) => {
@@ -86,21 +79,9 @@ function ActionsCell({ user }: ActionsCellProps) {
 }
 
 export const userColumns: ColumnDef<AdminUserRow>[] = [
-  {
-    accessorKey: "email",
-    header: "Email",
-    cell: ({ row }) => row.original.email ?? "—",
-  },
-  {
-    accessorKey: "firstName",
-    header: "First name",
-    cell: ({ row }) => row.original.firstName ?? "—",
-  },
-  {
-    accessorKey: "lastName",
-    header: "Last name",
-    cell: ({ row }) => row.original.lastName ?? "—",
-  },
+  { accessorKey: "email", header: "Email", cell: ({ row }) => row.original.email ?? "—" },
+  { accessorKey: "firstName", header: "First name", cell: ({ row }) => row.original.firstName ?? "—" },
+  { accessorKey: "lastName", header: "Last name", cell: ({ row }) => row.original.lastName ?? "—" },
   {
     id: "actions",
     header: "Actions",

@@ -13,6 +13,7 @@ import {
   type User,
   creditTransactionTable,
   CREDIT_TRANSACTION_TYPE,
+  appSettingTable,
 } from "@/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { createId } from "@paralleldrive/cuid2";
@@ -39,18 +40,9 @@ import { validateTurnstileToken } from "@/utils/validate-captcha";
 import { isTurnstileEnabled } from "@/flags";
 import { consumeReferralOnSignup } from "@/utils/referrals";
 
-// Cookies für den Passkey-Flow
 const PASSKEY_CHALLENGE_COOKIE_NAME = "passkey_challenge";
 const PASSKEY_USER_ID_COOKIE_NAME = "passkey_user_id";
 
-/**
- * Startet die Passkey-Registrierung:
- *  - Validiert Captcha
- *  - Legt den Benutzer an (inkl. lastCreditRefreshAt)
- *  - Sign-up-Bonus 30 (idempotent, COALESCE)
- *  - Referral (nur Einlader-Bonus) idempotent
- *  - Liefert WebAuthn-Options zurück
- */
 export const startPasskeyRegistrationAction = createServerAction()
   .input(passkeyEmailSchema)
   .handler(async ({ input }) => {
@@ -82,11 +74,10 @@ export const startPasskeyRegistrationAction = createServerAction()
             firstName: input.firstName,
             lastName: input.lastName,
             signUpIpAddress: ipAddress,
-            lastCreditRefreshAt: new Date(), // Initialwert
+            lastCreditRefreshAt: new Date(),
           })
           .returning();
 
-        // D1 kann Array oder D1Result zurückgeben
         let user: User | undefined;
         if (Array.isArray(insertResult)) {
           user = insertResult[0] as unknown as User;
@@ -99,17 +90,22 @@ export const startPasskeyRegistrationAction = createServerAction()
           throw new ZSAError("INTERNAL_SERVER_ERROR", "Failed to create user");
         }
 
-        // Sign-up-Bonus (30) genau einmal – idempotent (COALESCE gegen NULL)
+        // Sign-up Bonus (unverändert)
+        const signupSetting = await db.query.appSettingTable.findFirst({
+          where: eq(appSettingTable.key, "default_registration_credits"),
+          columns: { value: true },
+        });
+        const signupBonus = Number(signupSetting?.value ?? 0);
         const signupTxnId = `ctxn_signup_${user.id}`;
         const exists = await db.query.creditTransactionTable.findFirst({
           where: eq(creditTransactionTable.id, signupTxnId),
         });
-        if (!exists) {
+        if (!exists && signupBonus > 0) {
           await db.insert(creditTransactionTable).values({
             id: signupTxnId,
             userId: user.id,
-            amount: 30,
-            remainingAmount: 30,
+            amount: signupBonus,
+            remainingAmount: signupBonus,
             type: CREDIT_TRANSACTION_TYPE.PURCHASE,
             description: "Sign-up bonus",
             createdAt: new Date(),
@@ -119,20 +115,20 @@ export const startPasskeyRegistrationAction = createServerAction()
           await db
             .update(userTable)
             .set({
-              currentCredits: sql`COALESCE(${userTable.currentCredits}, 0) + 30`,
+              currentCredits: sql`COALESCE(${userTable.currentCredits}, 0) + ${signupBonus}`,
               updatedAt: new Date(),
             })
             .where(eq(userTable.id, user.id));
         }
 
-        // Referral (nur Einlader bekommt 50, Invitee KEINE Extra-Credits)
+        // ► Referral ggf. direkt konsumieren (setzt emailVerified=1)
         try {
           await consumeReferralOnSignup({ email: user.email!, userId: user.id });
         } catch (e) {
           console.error("[referral] consumeReferralOnSignup failed:", e);
         }
 
-        // WebAuthn-Options für den Client
+        // Passkey-Options erzeugen
         const options = await generatePasskeyRegistrationOptions(user.id, input.email);
 
         const cookieStore = await cookies();
@@ -165,21 +161,15 @@ export const startPasskeyRegistrationAction = createServerAction()
 
         return { optionsJSON };
       },
-      RATE_LIMITS.SIGN_UP
+      RATE_LIMITS.SIGN_UP,
     );
   });
 
-/**
- * Schließt die Passkey-Registrierung ab:
- *  - Verifiziert Antwort
- *  - Versendet Verifikations-E-Mail
- *  - Erstellt Session & Cookie
- */
 const completePasskeyRegistrationSchema = z.object({
   response: z.custom<RegistrationResponseJSON>(
     (val): val is RegistrationResponseJSON =>
       typeof val === "object" && val !== null && "id" in val && "rawId" in val,
-    "Invalid registration response"
+    "Invalid registration response",
   ),
 });
 
@@ -206,33 +196,37 @@ export const completePasskeyRegistrationAction = createServerAction()
       const db = getDB();
       const user = await db.query.userTable.findFirst({
         where: eq(userTable.id, userId),
+        columns: { email: true, firstName: true, emailVerified: true },
       });
+
       if (!user || !user.email) {
         throw new ZSAError("INTERNAL_SERVER_ERROR", "User not found");
       }
 
-      // Verifikations-Token in KV ablegen
-      const { env } = getCloudflareContext();
-      const verificationToken = createId();
-      const expiresAt = new Date(
-        Date.now() + EMAIL_VERIFICATION_TOKEN_EXPIRATION_SECONDS * 1000
-      );
-      if (!env?.NEXT_INC_CACHE_KV) {
-        throw new Error("Can't connect to KV store");
+      const alreadyVerified = !!user.emailVerified && Number(user.emailVerified) > 0;
+
+      if (!alreadyVerified) {
+        // Standard: Verifikations-Mail versenden
+        const { env } = getCloudflareContext();
+        const verificationToken = createId();
+        const expiresAt = new Date(Date.now() + EMAIL_VERIFICATION_TOKEN_EXPIRATION_SECONDS * 1000);
+        if (!env?.NEXT_INC_CACHE_KV) {
+          throw new Error("Can't connect to KV store");
+        }
+        await env.NEXT_INC_CACHE_KV.put(
+          getVerificationTokenKey(verificationToken),
+          JSON.stringify({ userId, expiresAt: expiresAt.toISOString() }),
+          { expirationTtl: Math.floor((expiresAt.getTime() - Date.now()) / 1000) },
+        );
+
+        await sendVerificationEmail({
+          email: user.email,
+          verificationToken,
+          username: user.firstName || user.email,
+        });
       }
-      await env.NEXT_INC_CACHE_KV.put(
-        getVerificationTokenKey(verificationToken),
-        JSON.stringify({ userId: user.id, expiresAt: expiresAt.toISOString() }),
-        { expirationTtl: Math.floor((expiresAt.getTime() - Date.now()) / 1000) }
-      );
 
-      await sendVerificationEmail({
-        email: user.email,
-        verificationToken,
-        username: user.firstName || user.email,
-      });
-
-      // Session erstellen & Cookie setzen
+      // Session erstellen
       const sessionToken = generateSessionToken();
       const session = await createSession({
         token: sessionToken,
@@ -246,7 +240,7 @@ export const completePasskeyRegistrationAction = createServerAction()
         expiresAt: new Date(session.expiresAt),
       });
 
-      // temporäre Cookies entfernen
+      // Aufräumen
       cookieStore.delete(PASSKEY_CHALLENGE_COOKIE_NAME);
       cookieStore.delete(PASSKEY_USER_ID_COOKIE_NAME);
 

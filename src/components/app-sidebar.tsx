@@ -77,10 +77,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         url: "/settings",
         icon: Settings2,
         items: [
-          { title: "Profile", url: "/settings" },
-          { title: "Security", url: "/settings/security" },
-          { title: "Sessions", url: "/settings/sessions" },
-          { title: "Change Password", url: "/forgot-password" },
+          { title: "Profile", url: "/settings" as Route },
+          { title: "Security", url: "/settings/security" as Route },
+          { title: "Sessions", url: "/settings/sessions" as Route },
+          { title: "Change Password", url: "/forgot-password" as Route },
+          // ⬇️ neu: ganz unten als letzter Menüpunkt
+          { title: "Change Theme", url: "/settings/appearance" as Route },
         ],
       },
     ],

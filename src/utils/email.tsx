@@ -9,6 +9,11 @@ import ReferralInviteEmail from "@/react-email/referral-invite";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import isProd from "./is-prod";
 
+// ✅ fehlende Imports ergänzt
+import { getDB } from "@/db";
+import { appSettingTable } from "@/db/schema";
+import { eq } from "drizzle-orm";
+
 function envVar(name: string): string | undefined {
   try {
     const { env } = getCloudflareContext();
@@ -242,7 +247,7 @@ export async function sendVerificationEmail({
   }
 }
 
-/** === Referral Invite === */
+/** === Referral Invite (englische Texte) === */
 export async function sendReferralInvitationEmail({
   email,
   invitationToken,
@@ -255,17 +260,35 @@ export async function sendReferralInvitationEmail({
   const inviteUrl = `${SITE_URL}/accept-referral?token=${encodeURIComponent(invitationToken)}`;
   if (!isProd) { console.warn("Referral invite url:", inviteUrl); return; }
 
+  // ✅ Settings aus DB lesen (Credits dynamisch)
+  const db = getDB();
+  const [referralSetting, registrationSetting] = await Promise.all([
+    db.query.appSettingTable.findFirst({
+      where: eq(appSettingTable.key, "referral_bonus_credits"),
+      columns: { value: true },
+    }),
+    db.query.appSettingTable.findFirst({
+      where: eq(appSettingTable.key, "default_registration_credits"),
+      columns: { value: true },
+    }),
+  ]);
+
+  const inviterBonusCredits = Number(referralSetting?.value ?? 0);
+  const inviteeCredits = Number(registrationSetting?.value ?? 0);
+
   const html = await render(
     <ReferralInviteEmail
       invitationToken={invitationToken}
       inviterName={inviterName}
+      inviterBonusCredits={inviterBonusCredits}
+      inviteeCredits={inviteeCredits}
     />
   );
 
   const provider = await getEmailProvider();
   if (!provider) throw new Error("No email provider configured. Set RESEND_API_KEY or BREVO_API_KEY.");
 
-  const subject = `Du wurdest zu ${SITE_NAME} eingeladen`;
+  const subject = `You’ve been invited to ${SITE_NAME}`;
 
   if (provider === "resend") {
     await sendResendEmail({

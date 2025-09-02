@@ -1,9 +1,9 @@
 import "server-only";
 import { eq, sql, desc, and, lt, isNull, gt, or, asc } from "drizzle-orm";
 import { getDB } from "@/db";
-import { userTable, creditTransactionTable, CREDIT_TRANSACTION_TYPE, purchasedItemsTable } from "@/db/schema";
+import { userTable, creditTransactionTable, CREDIT_TRANSACTION_TYPE, purchasedItemsTable, appSettingTable } from "@/db/schema";
 import { updateAllSessionsOfUser, KVSession } from "./kv-session";
-import { CREDIT_PACKAGES, FREE_MONTHLY_CREDITS, REFERRAL_CREDITS, INVITEE_CREDITS } from "@/constants";
+import { CREDIT_PACKAGES, FREE_MONTHLY_CREDITS } from "@/constants";
 
 export type CreditPackage = typeof CREDIT_PACKAGES[number];
 
@@ -12,21 +12,16 @@ export function getCreditPackage(packageId: string): CreditPackage | undefined {
 }
 
 function shouldRefreshCredits(session: KVSession, currentTime: Date): boolean {
-  // Check if it's been at least a month since last refresh
   if (!session.user.lastCreditRefreshAt) {
     return true;
   }
-  // Calculate the date exactly one month after the last refresh
   const oneMonthAfterLastRefresh = new Date(session.user.lastCreditRefreshAt);
   oneMonthAfterLastRefresh.setMonth(oneMonthAfterLastRefresh.getMonth() + 1);
-  // Only refresh if we've passed the one month mark
   return currentTime >= oneMonthAfterLastRefresh;
 }
 
 async function processExpiredCredits(userId: string, currentTime: Date) {
   const db = getDB();
-  // Find all expired transactions that haven't been processed and have remaining credits
-  // Order by type to process MONTHLY_REFRESH first, then by creation date
   const expiredTransactions = await db.query.creditTransactionTable.findMany({
     where: and(
       eq(creditTransactionTable.userId, userId),
@@ -35,24 +30,19 @@ async function processExpiredCredits(userId: string, currentTime: Date) {
       gt(creditTransactionTable.remainingAmount, 0),
     ),
     orderBy: [
-      // Process MONTHLY_REFRESH transactions first
       desc(sql`CASE WHEN ${creditTransactionTable.type} = ${CREDIT_TRANSACTION_TYPE.MONTHLY_REFRESH} THEN 1 ELSE 0 END`),
-      // Then process by creation date (oldest first)
       asc(creditTransactionTable.createdAt),
     ],
   });
-  // Process each expired transaction
   for (const transaction of expiredTransactions) {
     try {
-      // First, mark the transaction as processed to prevent double processing
       await db
         .update(creditTransactionTable)
         .set({
           expirationDateProcessedAt: currentTime,
-          remainingAmount: 0, // All remaining credits are expired
+          remainingAmount: 0,
         })
         .where(eq(creditTransactionTable.id, transaction.id));
-      // Then deduct the expired credits from user's balance
       await db
         .update(userTable)
         .set({
@@ -66,14 +56,6 @@ async function processExpiredCredits(userId: string, currentTime: Date) {
   }
 }
 
-/**
- * Increment a user's credit balance by a given amount.
- * This function handles both positive and negative deltas and refreshes
- * all active KV sessions for the user so that the new balance is visible.
- *
- * @param userId - ID of the user whose credits should change
- * @param delta - Number of credits to add (negative values will deduct)
- */
 export async function updateUserCredits(userId: string, delta: number): Promise<void> {
   const db = getDB();
   await db
@@ -82,7 +64,6 @@ export async function updateUserCredits(userId: string, delta: number): Promise<
       currentCredits: sql`${userTable.currentCredits} + ${delta}`,
     })
     .where(eq(userTable.id, userId));
-  // Propagate credit changes to all active sessions of this user
   await updateAllSessionsOfUser(userId);
 }
 
@@ -115,7 +96,7 @@ export async function logTransaction({
   await db.insert(creditTransactionTable).values({
     userId,
     amount,
-    remainingAmount: amount, // Initialize remaining amount to be the same as amount
+    remainingAmount: amount,
     type,
     description,
     expirationDate,
@@ -125,9 +106,7 @@ export async function logTransaction({
 
 export async function addFreeMonthlyCreditsIfNeeded(session: KVSession): Promise<number> {
   const currentTime = new Date();
-  // Check if it's been at least a month since last refresh
   if (shouldRefreshCredits(session, currentTime)) {
-    // Double check the last refresh date from the database to prevent race conditions
     const db = getDB();
     const user = await db.query.userTable.findFirst({
       where: eq(userTable.id, session.userId),
@@ -136,28 +115,23 @@ export async function addFreeMonthlyCreditsIfNeeded(session: KVSession): Promise
         currentCredits: true,
       },
     });
-    // This should prevent race conditions between multiple sessions
     if (
       !shouldRefreshCredits({ ...session, user: { ...session.user, lastCreditRefreshAt: user?.lastCreditRefreshAt ?? null } }, currentTime)
     ) {
       return user?.currentCredits ?? 0;
     }
-    // Process any expired credits first
     await processExpiredCredits(session.userId, currentTime);
-    // Add free monthly credits with 1 month expiration
     const expirationDate = new Date(currentTime);
     expirationDate.setMonth(expirationDate.getMonth() + 1);
     await updateUserCredits(session.userId, FREE_MONTHLY_CREDITS);
     await logTransaction({
       userId: session.userId,
       amount: FREE_MONTHLY_CREDITS,
-      description: 'Free monthly credits',
+      description: "Free monthly credits",
       type: CREDIT_TRANSACTION_TYPE.MONTHLY_REFRESH,
       expirationDate,
     });
-    // Update last refresh date
     await updateLastRefreshDate(session.userId, currentTime);
-    // Get the updated credit balance from the database
     const updatedUser = await db.query.userTable.findFirst({
       where: eq(userTable.id, session.userId),
       columns: {
@@ -182,7 +156,6 @@ export async function hasEnoughCredits({ userId, requiredCredits }: { userId: st
 
 export async function consumeCredits({ userId, amount, description }: { userId: string; amount: number; description: string }) {
   const db = getDB();
-  // First check if user has enough credits
   const user = await db.query.userTable.findFirst({
     where: eq(userTable.id, userId),
     columns: {
@@ -190,9 +163,8 @@ export async function consumeCredits({ userId, amount, description }: { userId: 
     },
   });
   if (!user || user.currentCredits < amount) {
-    throw new Error('Insufficient credits');
+    throw new Error("Insufficient credits");
   }
-  // Get all non-expired transactions with remaining credits, ordered by creation date
   const activeTransactionsWithBalance = await db.query.creditTransactionTable.findMany({
     where: and(
       eq(creditTransactionTable.userId, userId),
@@ -203,7 +175,6 @@ export async function consumeCredits({ userId, amount, description }: { userId: 
     orderBy: [asc(creditTransactionTable.createdAt)],
   });
   let remainingToDeduct = amount;
-  // Deduct from each transaction until we've deducted the full amount
   for (const transaction of activeTransactionsWithBalance) {
     if (remainingToDeduct <= 0) break;
     const deductFromThis = Math.min(transaction.remainingAmount, remainingToDeduct);
@@ -215,31 +186,27 @@ export async function consumeCredits({ userId, amount, description }: { userId: 
       .where(eq(creditTransactionTable.id, transaction.id));
     remainingToDeduct -= deductFromThis;
   }
-  // Update total credits
   await db
     .update(userTable)
     .set({
       currentCredits: sql`${userTable.currentCredits} - ${amount}`,
     })
     .where(eq(userTable.id, userId));
-  // Log the usage transaction
   await db.insert(creditTransactionTable).values({
     userId,
     amount: -amount,
-    remainingAmount: 0, // Usage transactions don't have remaining amount
+    remainingAmount: 0,
     type: CREDIT_TRANSACTION_TYPE.USAGE,
     description,
     createdAt: new Date(),
     updatedAt: new Date(),
   });
-  // Get updated credit balance
   const updatedUser = await db.query.userTable.findFirst({
     where: eq(userTable.id, userId),
     columns: {
       currentCredits: true,
     },
   });
-  // Update all KV sessions to reflect the new credit balance
   await updateAllSessionsOfUser(userId);
   return updatedUser?.currentCredits ?? 0;
 }
@@ -275,23 +242,29 @@ export async function getCreditTransactions({ userId, page = 1, limit = 10 }: { 
 export async function getUserPurchasedItems(userId: string) {
   const db = getDB();
   const purchasedItems = await db.query.purchasedItemsTable.findMany({
-    where: eq(purchasedItemsTable.userId, userId),
+  where: eq(purchasedItemsTable.userId, userId),
   });
-  // Create a map of purchased items for easy lookup
   return new Set(purchasedItems.map((item) => `${item.itemType}:${item.itemId}`));
 }
 
-/**
- * Award referral credits to both the inviter and the invitee.  When an
- * invitation is accepted, the inviter receives REFERRAL_CREDITS and
- * the newly registered user receives INVITEE_CREDITS.  After updating
- * each user's credits, their sessions are refreshed via
- * updateAllSessionsOfUser so the new balances are reflected in the UI.
- *
- * @param inviterId The user ID of the person who sent the invitation
- * @param inviteeId The user ID of the person who accepted the invitation
- */
 export async function awardReferralCredits(inviterId: string, inviteeId: string): Promise<void> {
-  await updateUserCredits(inviterId, REFERRAL_CREDITS);
-  await updateUserCredits(inviteeId, INVITEE_CREDITS);
+  const db = getDB();
+  const [referralSetting, signupSetting] = await Promise.all([
+    db.query.appSettingTable.findFirst({
+      where: eq(appSettingTable.key, "referral_bonus_credits"),
+      columns: { value: true },
+    }),
+    db.query.appSettingTable.findFirst({
+      where: eq(appSettingTable.key, "default_registration_credits"),
+      columns: { value: true },
+    }),
+  ]);
+  const referralBonus = Number(referralSetting?.value ?? 0);
+  const signupBonus = Number(signupSetting?.value ?? 0);
+  if (referralBonus > 0) {
+    await updateUserCredits(inviterId, referralBonus);
+  }
+  if (signupBonus > 0) {
+    await updateUserCredits(inviteeId, signupBonus);
+  }
 }

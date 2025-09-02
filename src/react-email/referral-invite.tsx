@@ -1,42 +1,50 @@
 import * as React from 'react';
-import { SITE_NAME, SITE_URL, REFERRAL_CREDITS, INVITEE_CREDITS } from '@/constants';
+import { SITE_NAME, SITE_URL } from '@/constants';
 
 export interface ReferralInviteEmailProps {
   invitationToken: string;
   inviterName?: string;
+  inviterBonusCredits: number;
+  inviteeCredits: number;
 }
 
 const ReferralInviteEmail: React.FC<ReferralInviteEmailProps> = ({
   invitationToken,
   inviterName,
+  inviterBonusCredits,
+  inviteeCredits,
 }) => {
   const acceptUrl = `${SITE_URL}/accept-referral?token=${invitationToken}`;
   return (
     <div style={{ fontFamily: 'Helvetica, Arial, sans-serif', fontSize: 16, color: '#333', lineHeight: 1.4 }}>
-      <h1 style={{ fontSize: 24, marginBottom: '0.5em' }}>Du wurdest zu {SITE_NAME} eingeladen!</h1>
+      <h1 style={{ fontSize: 24, marginBottom: '0.5em' }}>
+        You&apos;ve been invited to {SITE_NAME}!
+      </h1>
       {inviterName && (
-        <p style={{ marginBottom: '1em' }}><strong>{inviterName}</strong> hat dich eingeladen, {SITE_NAME} auszuprobieren.</p>
+        <p style={{ marginBottom: '1em' }}>
+          <strong>{inviterName}</strong> has invited you to try {SITE_NAME}.
+        </p>
       )}
       <p style={{ marginBottom: '1em' }}>
-        Melde dich noch heute an und erhalte als Willkommensbonus <strong>{INVITEE_CREDITS} Credits</strong>. Dein
-        Einladender erhält ebenfalls <strong>{REFERRAL_CREDITS} Credits</strong>, sobald du dein Konto angelegt hast.
+        Sign up today and receive a welcome bonus of <strong>{inviteeCredits} credits</strong>. Your inviter will also
+        receive <strong>{inviterBonusCredits} credits</strong> once you&apos;ve created your account.
       </p>
       <p style={{ marginBottom: '1em' }}>
-        Mit unseren Credits kannst du sofort loslegen – ohne versteckte Kosten und jederzeit kündbar.
+        With our credits you can start immediately, with no hidden costs and cancel any time.
       </p>
       <p style={{ marginBottom: '2em' }}>
-        Um die Einladung anzunehmen, klicke einfach auf den folgenden Link und registriere dich:
+        To accept the invitation, simply click the following link and register:
       </p>
       <p>
         <a
           href={acceptUrl}
           style={{ display: 'inline-block', padding: '12px 20px', backgroundColor: '#2563eb', color: '#ffffff', textDecoration: 'none', borderRadius: '5px' }}
         >
-          Einladung annehmen
+          Accept invitation
         </a>
       </p>
       <p style={{ marginTop: '2em', fontSize: 12, color: '#666' }}>
-        Wenn du den Button nicht anklicken kannst, kopiere diesen Link in deinen Browser: {acceptUrl}
+        If you can&apos;t click the button, copy this link into your browser: {acceptUrl}
       </p>
     </div>
   );

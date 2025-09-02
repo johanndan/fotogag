@@ -4,9 +4,9 @@
 import {
   BadgeCheck,
   Bell,
-  ChevronsUpDown,
   CreditCard,
   LogOut,
+  ChevronsUpDown,
 } from "lucide-react"
 
 import {
@@ -34,8 +34,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import useSignOut from "@/hooks/useSignOut"
 import { useRouter } from "next/navigation"
 import { useSessionStore } from "@/state/session"
-import ThemeSwitch from "./theme-switch"
-import { getInitials } from "@/utils/name-initials"   // ⬅️ fehlender Import
+import { getInitials } from "@/utils/name-initials" // wichtig
 
 export function NavUser() {
   const { session, isLoading } = useSessionStore();
@@ -70,7 +69,6 @@ export function NavUser() {
   const displayName =
     user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : (user.email ?? "");
 
-  // Einheitlicher Initialen-Fallback
   const initials =
     session.user.initials
       ?? getInitials(`${user.firstName ?? ""} ${user.lastName ?? ""}`)
@@ -131,9 +129,7 @@ export function NavUser() {
               </div>
             </DropdownMenuLabel>
 
-            <div className="px-2">
-              <ThemeSwitch className="w-full my-3">Change theme</ThemeSwitch>
-            </div>
+            {/* ThemeSwitch wurde hier entfernt */}
 
             <DropdownMenuGroup>
               <DropdownMenuItem

@@ -7,6 +7,7 @@ import {
   type User,
   creditTransactionTable,
   CREDIT_TRANSACTION_TYPE,
+  appSettingTable,
 } from "@/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { getGoogleSSOClient } from "@/lib/sso/google-sso";
@@ -35,7 +36,6 @@ export async function GET(req: Request) {
     const storedState = jar.get(GOOGLE_OAUTH_STATE_COOKIE_NAME)?.value;
     const codeVerifier = jar.get(GOOGLE_OAUTH_CODE_VERIFIER_COOKIE_NAME)?.value;
 
-    // Einmal-Cookies leeren (auch bei Fehlern)
     jar.delete(GOOGLE_OAUTH_STATE_COOKIE_NAME);
     jar.delete(GOOGLE_OAUTH_CODE_VERIFIER_COOKIE_NAME);
 
@@ -46,7 +46,6 @@ export async function GET(req: Request) {
     const google = getGoogleSSOClient();
     const tokens = await google.validateAuthorizationCode(code, codeVerifier);
 
-    // UserInfo laden
     const res = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
       headers: { Authorization: `Bearer ${tokens.accessToken}` },
     });
@@ -69,7 +68,6 @@ export async function GET(req: Request) {
       where: eq(userTable.email, email),
     });
 
-    // Neu anlegen, falls nicht vorhanden
     let isNew = false;
     if (!user) {
       await canSignUp({ email });
@@ -80,7 +78,7 @@ export async function GET(req: Request) {
           firstName: profile.given_name,
           lastName: profile.family_name,
           signUpIpAddress: await getIP(),
-          lastCreditRefreshAt: new Date(), // Initialwert setzen
+          lastCreditRefreshAt: new Date(),
         })
         .returning();
 
@@ -89,18 +87,21 @@ export async function GET(req: Request) {
         : ((insertResult as unknown as { [k: number]: unknown })[0] as User);
 
       isNew = true;
-
-      // Sign-up Bonus (30) genau einmal, idempotent
+      const signupSetting = await db.query.appSettingTable.findFirst({
+        where: eq(appSettingTable.key, "default_registration_credits"),
+        columns: { value: true },
+      });
+      const signupBonus = Number(signupSetting?.value ?? 0);
       const signupTxnId = `ctxn_signup_${user.id}`;
       const exists = await db.query.creditTransactionTable.findFirst({
         where: eq(creditTransactionTable.id, signupTxnId),
       });
-      if (!exists) {
+      if (!exists && signupBonus > 0) {
         await db.insert(creditTransactionTable).values({
           id: signupTxnId,
           userId: user.id,
-          amount: 30,
-          remainingAmount: 30,
+          amount: signupBonus,
+          remainingAmount: signupBonus,
           type: CREDIT_TRANSACTION_TYPE.PURCHASE,
           description: "Sign-up bonus",
           createdAt: new Date(),
@@ -110,8 +111,7 @@ export async function GET(req: Request) {
         await db
           .update(userTable)
           .set({
-            // COALESCE gegen NULL
-            currentCredits: sql`COALESCE(${userTable.currentCredits}, 0) + 30`,
+            currentCredits: sql`COALESCE(${userTable.currentCredits}, 0) + ${signupBonus}`,
             updatedAt: new Date(),
           })
           .where(eq(userTable.id, user.id));
@@ -122,8 +122,6 @@ export async function GET(req: Request) {
       return NextResponse.redirect(new URL("/", url));
     }
 
-    // WICHTIG: Referral einlösen nur bei Neuanlage (Invitee erhält KEINE Extracredits –
-    // das macht die implementierte referrals-Logik; nur der Einlader bekommt 50)
     if (isNew) {
       try {
         await consumeReferralOnSignup({ email: user.email!, userId: user.id });
@@ -132,7 +130,6 @@ export async function GET(req: Request) {
       }
     }
 
-    // Session setzen (korrekter Typ!)
     const sessionToken = generateSessionToken();
     const session = await createSession({
       token: sessionToken,

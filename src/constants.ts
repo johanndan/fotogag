@@ -37,23 +37,14 @@ export const CREDIT_PACKAGES = [
   { id: "package-3", credits: 3000, price: 20 },
 ] as const
 
-export const CREDITS_EXPIRATION_YEARS = 2
+export const CREDITS_EXPIRATION_YEARS = 10
 
 // Free monthly credits given to every user as a percentage of the smallest package
 export const FREE_MONTHLY_CREDITS = CREDIT_PACKAGES[0].credits * 0.1
 
 // Pagination limit for credit transactions
-export const MAX_TRANSACTIONS_PER_PAGE = 10
+export const MAX_TRANSACTIONS_PER_PAGE = 5
 
 // Default redirect after a successful sign in
 export const REDIRECT_AFTER_SIGN_IN: Route = "/dashboard";
 
-// ──────────────────────────────────────────────────────────────
-// Referral program
-// ──────────────────────────────────────────────────────────────
-/**
- * When a user invites another user via e-mail and the invitation is accepted,
- * the inviter receives REFERRAL_CREDITS and the new user receives INVITEE_CREDITS.
- */
-export const REFERRAL_CREDITS = 60
-export const INVITEE_CREDITS = 50

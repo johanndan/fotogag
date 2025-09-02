@@ -26,14 +26,17 @@ type Props = { userId: string; email?: string | null };
 export default function DeleteUserButton({ userId, email }: Props) {
   const router = useRouter();
 
+  // WICHTIG: Hier eine *ZSA*-Action übergeben – kein (formData: FormData) => Promise<...>
   const { execute, isPending } = useServerAction(deleteUserAction, {
     onError: (err) => {
+      // zsa-react liefert { err }-Objekte
       toast.error(err.err?.message ?? "Failed to delete user");
     },
     onSuccess: () => {
       toast.success("User deleted");
-      // WICHTIG: auf vorhandene Route gehen und kein Route-Typing erzwingen
+      // Zurück zur Admin-Übersicht (und UI aktualisieren)
       router.replace("/admin");
+      router.refresh();
     },
   });
 
@@ -42,7 +45,7 @@ export default function DeleteUserButton({ userId, email }: Props) {
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
-        <Button variant="destructive" size="sm" disabled={isPending}>
+        <Button variant="destructive" size="sm" disabled={isPending} title="User und alle zugehörigen Daten löschen">
           <Trash2 className="h-4 w-4 mr-1" />
           {isPending ? "Deleting…" : "Delete User"}
         </Button>

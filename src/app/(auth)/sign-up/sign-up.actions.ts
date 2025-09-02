@@ -3,10 +3,21 @@
 
 import { createServerAction, ZSAError } from "zsa";
 import { getDB } from "@/db";
-import { userTable, type User, creditTransactionTable, CREDIT_TRANSACTION_TYPE } from "@/db/schema";
+import {
+  userTable,
+  type User,
+  creditTransactionTable,
+  CREDIT_TRANSACTION_TYPE,
+  appSettingTable,
+} from "@/db/schema";
 import { signUpSchema } from "@/schemas/signup.schema";
 import { hashPassword } from "@/utils/password-hasher";
-import { createSession, generateSessionToken, setSessionTokenCookie, canSignUp } from "@/utils/auth";
+import {
+  createSession,
+  generateSessionToken,
+  setSessionTokenCookie,
+  canSignUp,
+} from "@/utils/auth";
 import { eq, sql } from "drizzle-orm";
 import { createId } from "@paralleldrive/cuid2";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
@@ -24,7 +35,6 @@ export const signUpAction = createServerAction()
   .handler(async ({ input }) => {
     return withRateLimit(async () => {
       const db = getDB();
-      const { env } = getCloudflareContext();
 
       if (await isTurnstileEnabled() && input.captchaToken) {
         const success = await validateTurnstileToken(input.captchaToken);
@@ -44,7 +54,6 @@ export const signUpAction = createServerAction()
 
       const hashedPassword = await hashPassword({ password: input.password });
 
-      // User anlegen – lastCreditRefreshAt = now, damit Monthly nicht sofort +50 bucht
       const insertResult = await db
         .insert(userTable)
         .values({
@@ -69,17 +78,22 @@ export const signUpAction = createServerAction()
         throw new ZSAError("INTERNAL_SERVER_ERROR", "Failed to create user");
       }
 
-      // EINMALIGER Sign-up Bonus: +30 für alle neuen Accounts (idempotent)
+      // Sign-up Bonus
+      const signupSetting = await db.query.appSettingTable.findFirst({
+        where: eq(appSettingTable.key, "default_registration_credits"),
+        columns: { value: true },
+      });
+      const signupBonus = Number(signupSetting?.value ?? 0);
       const signupTxnId = `ctxn_signup_${user.id}`;
       const existsSignupTxn = await db.query.creditTransactionTable.findFirst({
         where: eq(creditTransactionTable.id, signupTxnId),
       });
-      if (!existsSignupTxn) {
+      if (!existsSignupTxn && signupBonus > 0) {
         await db.insert(creditTransactionTable).values({
           id: signupTxnId,
           userId: user.id,
-          amount: 30,
-          remainingAmount: 30,
+          amount: signupBonus,
+          remainingAmount: signupBonus,
           type: CREDIT_TRANSACTION_TYPE.PURCHASE,
           description: "Sign-up bonus",
           createdAt: new Date(),
@@ -88,33 +102,42 @@ export const signUpAction = createServerAction()
         await db
           .update(userTable)
           .set({
-            currentCredits: sql`COALESCE(${userTable.currentCredits}, 0) + 30`,
+            currentCredits: sql`COALESCE(${userTable.currentCredits}, 0) + ${signupBonus}`,
             updatedAt: new Date(),
           })
           .where(eq(userTable.id, user.id));
       }
 
-      // Referral idempotent (nur Einlader +50, kein Invitee-Bonus)
+      // ► Referral-Einladung konsumieren (setzt u.a. emailVerified auf Timestamp)
       try {
-        await consumeReferralOnSignup({ email: user.email, userId: user.id });
+        await consumeReferralOnSignup({ email: user.email!, userId: user.id });
       } catch (e) {
         console.error("[referral] consumeReferralOnSignup failed:", e);
       }
 
-      try {
-        const sessionToken = generateSessionToken();
-        const session = await createSession({
-          token: sessionToken,
-          userId: user.id,
-          authenticationType: "password",
-        });
+      // User frisch laden (hat consumeReferralOnSignup emailVerified gesetzt?)
+      const fresh = await db.query.userTable.findFirst({
+        where: eq(userTable.id, user.id),
+        columns: { emailVerified: true },
+      });
+      const isAlreadyVerified = !!fresh?.emailVerified && Number(fresh.emailVerified) > 0;
 
-        await setSessionTokenCookie({
-          token: sessionToken,
-          userId: user.id,
-          expiresAt: new Date(session.expiresAt),
-        });
+      // Session erstellen
+      const sessionToken = generateSessionToken();
+      const session = await createSession({
+        token: sessionToken,
+        userId: user.id,
+        authenticationType: "password",
+      });
+      await setSessionTokenCookie({
+        token: sessionToken,
+        userId: user.id,
+        expiresAt: new Date(session.expiresAt),
+      });
 
+      // Verifikations-Mail NUR, wenn nicht schon verifiziert (kein Referral)
+      if (!isAlreadyVerified) {
+        const { env } = getCloudflareContext();
         const verificationToken = createId();
         const expiresAt = new Date(Date.now() + EMAIL_VERIFICATION_TOKEN_EXPIRATION_SECONDS * 1000);
         if (!env?.NEXT_INC_CACHE_KV) {
@@ -123,17 +146,14 @@ export const signUpAction = createServerAction()
         await env.NEXT_INC_CACHE_KV.put(
           getVerificationTokenKey(verificationToken),
           JSON.stringify({ userId: user.id, expiresAt: expiresAt.toISOString() }),
-          { expirationTtl: Math.floor((expiresAt.getTime() - Date.now()) / 1000) }
+          { expirationTtl: Math.floor((expiresAt.getTime() - Date.now()) / 1000) },
         );
 
         await sendVerificationEmail({
-          email: user.email,
+          email: user.email!,
           verificationToken,
-          username: user.firstName || user.email,
+          username: user.firstName || user.email!,
         });
-      } catch (error) {
-        console.error(error);
-        throw new ZSAError("INTERNAL_SERVER_ERROR", "Failed to create session after signup");
       }
 
       return { success: true };

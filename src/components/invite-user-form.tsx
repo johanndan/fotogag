@@ -1,17 +1,21 @@
+// src/components/invite-user-form.tsx
 "use client";
 
-import { useState } from 'react';
-import { inviteUserByEmailAction } from '@/actions/referral-actions';
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { inviteUserByEmailAction } from "@/actions/referral-actions";
 
 /**
- * A simple form component that allows a logged‑in user to send referral
- * invitations via e‑mail.  On submission it calls the
- * inviteUserByEmailAction server action and displays a status message.
+ * A simple form component that allows a logged-in user to send referral
+ * invitations via e-mail. On submission it calls the server action and
+ * refreshes the page data so the latest 5 invites appear immediately.
  */
 export default function InviteUserForm() {
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [isSubmitting, setSubmitting] = useState(false);
+  const [isPending, startTransition] = useTransition();
+  const router = useRouter();
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -19,15 +23,19 @@ export default function InviteUserForm() {
     setStatus(null);
     try {
       await inviteUserByEmailAction({ email });
-      setStatus('Invitation sent successfully.');
-      setEmail('');
+      setStatus("Invitation sent successfully.");
+      setEmail("");
+
+      // Client-side Refresh der Server Components (Invite-Liste)
+      startTransition(() => {
+        router.refresh();
+      });
     } catch (error: unknown) {
-      console.error('Failed to send invitation:', error);
-      // Extract a message from unknown error objects in a type-safe way
-      let message = 'Failed to send invitation.';
-      if (error && typeof error === 'object' && 'message' in error) {
+      console.error("Failed to send invitation:", error);
+      let message = "Failed to send invitation.";
+      if (error && typeof error === "object" && "message" in error) {
         const err = error as { message?: unknown };
-        if (typeof err.message === 'string') {
+        if (typeof err.message === "string") {
           message = err.message;
         }
       }
@@ -51,10 +59,10 @@ export default function InviteUserForm() {
       />
       <button
         type="submit"
-        disabled={isSubmitting}
+        disabled={isSubmitting || isPending}
         className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50"
       >
-        {isSubmitting ? 'Sending…' : 'Send Invitation'}
+        {isSubmitting || isPending ? "Sending…" : "Send Invitation"}
       </button>
       {status && <p className="text-sm text-gray-700">{status}</p>}
     </form>
