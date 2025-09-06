@@ -97,6 +97,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "daisyui": "^5.1.7",
     "drizzle-kit": "^0.31.4",
     "eslint": "^9.27.0",
     "eslint-config-next": "15.3.2",

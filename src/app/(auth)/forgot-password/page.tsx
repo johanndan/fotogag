@@ -1,3 +1,4 @@
+// /src/app/(auth)/forgot-password/page.tsx
 import { Metadata } from "next";
 import ForgotPasswordClientComponent from "./forgot-password.client";
 

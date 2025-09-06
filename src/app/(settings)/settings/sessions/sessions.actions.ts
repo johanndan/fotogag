@@ -15,9 +15,7 @@ import { SessionWithMeta } from "@/types";
 function isValidSession(session: unknown): session is SessionWithMeta {
   if (!session || typeof session !== "object") return false;
   const sessionObj = session as Record<string, unknown>;
-  return (
-    "createdAt" in sessionObj && typeof sessionObj.createdAt === "number"
-  );
+  return "createdAt" in sessionObj && typeof sessionObj.createdAt === "number";
 }
 
 export const getSessionsAction = createServerAction()
@@ -33,12 +31,11 @@ export const getSessionsAction = createServerAction()
       const sessionIds = await getAllSessionIdsOfUser(session.user.id);
       const sessions = await Promise.all(
         sessionIds.map(async ({ key, absoluteExpiration }) => {
-          const sessionId = key.split(":")[2]; // Format is "session:userId:sessionId"
+          const sessionId = key.split(":")[2]; // Format: "session:userId:sessionId"
           const sessionData = await getKVSession(sessionId, session.user.id);
 
           if (!sessionData) return null;
 
-          // Parse user agent on the server
           const result = new UAParser(sessionData.userAgent ?? "").getResult();
 
           return {
@@ -71,10 +68,7 @@ export const getSessionsAction = createServerAction()
         })
       );
 
-      // Filter out any null sessions and sort by creation date
-      return sessions
-        .filter(isValidSession)
-        .sort((a, b) => b.createdAt - a.createdAt);
+      return sessions.filter(isValidSession).sort((a, b) => b.createdAt - a.createdAt);
     }, RATE_LIMITS.SETTINGS);
   });
 
@@ -95,5 +89,37 @@ export const deleteSessionAction = createServerAction()
       await deleteKVSession(input.sessionId, session.user.id);
 
       return { success: true };
+    }, RATE_LIMITS.DELETE_SESSION);
+  });
+
+/** Neu: alle Sessions eines Users löschen (optional die aktuelle behalten) */
+export const deleteAllSessionsOfUserAction = createServerAction()
+  .input(
+    z.object({
+      /** Optional: aktuelle Session während des Delete-Flows noch behalten */
+      keepCurrentSessionId: z.string().optional(),
+    })
+  )
+  .handler(async ({ input }) => {
+    return withRateLimit(async () => {
+      const session = await getSessionFromCookie();
+      if (!session?.user?.id) {
+        throw new ZSAError("NOT_AUTHORIZED", "Not authenticated");
+      }
+
+      const userId = session.user.id;
+      const all = await getAllSessionIdsOfUser(userId);
+
+      let deleted = 0;
+      await Promise.all(
+        all.map(async ({ key }) => {
+          const sessionId = key.split(":")[2]; // "session:{userId}:{sessionId}"
+          if (input.keepCurrentSessionId && sessionId === input.keepCurrentSessionId) return;
+          await deleteKVSession(sessionId, userId);
+          deleted++;
+        })
+      );
+
+      return { success: true, deleted };
     }, RATE_LIMITS.DELETE_SESSION);
   });

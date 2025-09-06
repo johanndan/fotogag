@@ -1,3 +1,4 @@
+// /src/app/(settings)/settings/sessions/page.tsx
 import { Suspense } from "react";
 import { SessionsClient } from "./sessions.client";
 import { Skeleton } from "@/components/ui/skeleton";

@@ -1,3 +1,4 @@
+// /src/app/(settings)/settings/sessions/sessions.client.tsx
 "use client";
 
 import { Button } from "@/components/ui/button";
@@ -73,11 +74,11 @@ export function SessionsClient({ sessions }: { sessions: SessionWithMeta[] }) {
                 {!session?.isCurrentSession && (
                   <Dialog>
                     <DialogTrigger asChild>
-                      <Button size="sm" variant="destructive" className="w-full sm:w-auto">Delete session</Button>
+                      <Button size="sm" variant="destructive" className="w-full sm:w-auto">Log out device</Button>
                     </DialogTrigger>
                     <DialogContent>
                       <DialogHeader>
-                        <DialogTitle>Delete session?</DialogTitle>
+                        <DialogTitle>Log out device?</DialogTitle>
                         <DialogDescription>
                           This will sign out this device. This action cannot be undone.
                         </DialogDescription>
@@ -91,7 +92,7 @@ export function SessionsClient({ sessions }: { sessions: SessionWithMeta[] }) {
                           className="mb-4 sm:mb-0"
                           onClick={() => deleteSession({ sessionId: session.id })}
                         >
-                          Delete session
+                          Log out device
                         </Button>
                       </DialogFooter>
                     </DialogContent>

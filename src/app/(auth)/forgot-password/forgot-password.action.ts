@@ -9,46 +9,43 @@ import { eq } from "drizzle-orm";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { getResetTokenKey } from "@/utils/auth-utils";
 import { validateTurnstileToken } from "@/utils/validate-captcha";
-import { forgotPasswordSchema } from "@/schemas/forgot-password.schema";
+import { forgotPasswordSchema } from "@/schemas/forgot-password.schema"; // <- neues (optionales) Schema
 import { withRateLimit, RATE_LIMITS } from "@/utils/with-rate-limit";
 import { PASSWORD_RESET_TOKEN_EXPIRATION_SECONDS } from "@/constants";
 import { isTurnstileEnabled } from "@/flags";
 
-const createId = init({
-  length: 32,
-});
+const createId = init({ length: 32 });
 
 export const forgotPasswordAction = createServerAction()
-  .input(forgotPasswordSchema)
+  .input(forgotPasswordSchema) // <- captchaToken jetzt optional
   .handler(async ({ input }) => {
     return withRateLimit(
       async () => {
-        if (await isTurnstileEnabled() && input.captchaToken) {
-          const success = await validateTurnstileToken(input.captchaToken)
-
-          if (!success) {
-            throw new ZSAError(
-              "INPUT_PARSE_ERROR",
-              "Please complete the captcha"
-            )
+        // Captcha nur prüfen, wenn Turnstile aktiv ist UND ein Token mitgesendet wurde
+        if (await isTurnstileEnabled()) {
+          if (input.captchaToken) {
+            const success = await validateTurnstileToken(input.captchaToken);
+            if (!success) {
+              throw new ZSAError("INPUT_PARSE_ERROR", "Please complete the captcha");
+            }
           }
+          // kein Token => eingeloggt/vertrauenswürdig: weiter ohne Prüfung
         }
 
         const db = getDB();
         const { env } = getCloudflareContext();
 
         try {
-          // Find user by email
+          // User nach E-Mail suchen (case-insensitive)
+          const email = input.email.toLowerCase();
           const user = await db.query.userTable.findFirst({
-            where: eq(userTable.email, input.email.toLowerCase()),
+            where: eq(userTable.email, email),
           });
 
-          // Even if user is not found, return success to prevent email enumeration
-          if (!user) {
-            return { success: true };
-          }
+          // Immer Erfolg zurückgeben (kein User-Enumeration-Leak)
+          if (!user) return { success: true };
 
-          // Generate reset token
+          // Reset-Token erstellen + in KV ablegen
           const token = createId();
           const expiresAt = new Date(Date.now() + PASSWORD_RESET_TOKEN_EXPIRATION_SECONDS * 1000);
 
@@ -56,39 +53,25 @@ export const forgotPasswordAction = createServerAction()
             throw new Error("Can't connect to KV store");
           }
 
-          // Save reset token in KV with expiration
           await env.NEXT_INC_CACHE_KV.put(
             getResetTokenKey(token),
-            JSON.stringify({
-              userId: user.id,
-              expiresAt: expiresAt.toISOString(),
-            }),
-            {
-              expirationTtl: Math.floor((expiresAt.getTime() - Date.now()) / 1000),
-            }
+            JSON.stringify({ userId: user.id, expiresAt: expiresAt.toISOString() }),
+            { expirationTtl: Math.floor((expiresAt.getTime() - Date.now()) / 1000) }
           );
 
-          // Send reset email
-          if (user?.email) {
-            await sendPasswordResetEmail({
-              email: user.email,
-              resetToken: token,
-              username: user.firstName ?? user.email,
-            });
-          }
+          // Reset-Mail senden
+          await sendPasswordResetEmail({
+            email: user.email!,
+            resetToken: token,
+            username: user.firstName ?? user.email!,
+          });
 
           return { success: true };
         } catch (error) {
-          console.error(error)
+          console.error(error);
+          if (error instanceof ZSAError) throw error;
 
-          if (error instanceof ZSAError) {
-            throw error;
-          }
-
-          throw new ZSAError(
-            "INTERNAL_SERVER_ERROR",
-            "An unexpected error occurred"
-          );
+          throw new ZSAError("INTERNAL_SERVER_ERROR", "An unexpected error occurred");
         }
       },
       RATE_LIMITS.FORGOT_PASSWORD

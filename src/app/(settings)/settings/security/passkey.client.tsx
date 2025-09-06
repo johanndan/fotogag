@@ -52,12 +52,12 @@ function PasskeyRegistrationButton({ email, className, onSuccess }: PasskeyRegis
         challenge: options.challenge,
       });
 
-      toast.success("Passkey registered successfully");
+      toast.success("Biometric registered successfully");
       onSuccess?.();
       router.refresh();
     } catch (error) {
-      console.error("Passkey registration error:", error);
-      toast.error("Failed to register passkey");
+      console.error("Biometric registration error:", error);
+      toast.error("Failed to register biometric ");
     } finally {
       setIsRegistering(false);
     }
@@ -69,7 +69,7 @@ function PasskeyRegistrationButton({ email, className, onSuccess }: PasskeyRegis
       disabled={isRegistering}
       className={className}
     >
-      {isRegistering ? "Registering..." : "Register Passkey"}
+      {isRegistering ? "Registering..." : "Register Biometric"}
     </Button>
   );
 }
@@ -95,7 +95,7 @@ export function PasskeysList({ passkeys, currentPasskeyId, email }: PasskeysList
   const dialogCloseRef = useRef<HTMLButtonElement>(null);
   const { execute: deletePasskey } = useServerAction(deletePasskeyAction, {
     onSuccess: () => {
-      toast.success("Passkey deleted");
+      toast.success("Biometric deleted");
       dialogCloseRef.current?.click();
       router.refresh();
     }
@@ -108,9 +108,9 @@ export function PasskeysList({ passkeys, currentPasskeyId, email }: PasskeysList
     <div className="space-y-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
-          <h2 className="text-lg font-semibold">Passkeys</h2>
+          <h2 className="text-lg font-semibold">Biometrics</h2>
           <p className="text-sm text-muted-foreground">
-            Manage your passkeys for passwordless authentication.
+            Manage your biometrics for passwordless authentication.
           </p>
         </div>
         {email && (
@@ -130,7 +130,7 @@ export function PasskeysList({ passkeys, currentPasskeyId, email }: PasskeysList
                   <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2">
                     <CardTitle className="flex flex-wrap items-center gap-2 text-base">
                       {passkey.aaguid && (PASSKEY_AUTHENTICATOR_IDS as Record<string, string>)[passkey.aaguid] || "Unknown Authenticator App"}
-                      {isCurrentPasskey(passkey) && <Badge>Current Passkey</Badge>}
+                      {isCurrentPasskey(passkey) && <Badge>Current Biometric</Badge>}
                     </CardTitle>
                     <div className="text-sm text-muted-foreground whitespace-nowrap">
                       · {formatDistanceToNow(passkey.createdAt)} ago
@@ -146,13 +146,13 @@ export function PasskeysList({ passkeys, currentPasskeyId, email }: PasskeysList
                   {!isCurrentPasskey(passkey) && (
                     <Dialog>
                       <DialogTrigger asChild>
-                        <Button size="sm" variant="destructive" className="w-full sm:w-auto">Delete passkey</Button>
+                        <Button size="sm" variant="destructive" className="w-full sm:w-auto">Delete biometric</Button>
                       </DialogTrigger>
                       <DialogContent>
                         <DialogHeader>
-                          <DialogTitle>Delete passkey?</DialogTitle>
+                          <DialogTitle>Delete biometric?</DialogTitle>
                           <DialogDescription>
-                            This will remove this passkey from your account. This action cannot be undone.
+                            This will remove this biometric from your account. This action cannot be undone.
                           </DialogDescription>
                         </DialogHeader>
                         <DialogFooter className="mt-6 sm:mt-0">
@@ -164,7 +164,7 @@ export function PasskeysList({ passkeys, currentPasskeyId, email }: PasskeysList
                             className="mb-4 sm:mb-0"
                             onClick={() => deletePasskey({ credentialId: passkey.credentialId })}
                           >
-                            Delete passkey
+                            Delete biometric
                           </Button>
                         </DialogFooter>
                       </DialogContent>
@@ -178,7 +178,7 @@ export function PasskeysList({ passkeys, currentPasskeyId, email }: PasskeysList
 
         {passkeys.length === 0 && (
           <div className="text-center text-muted-foreground">
-            No passkeys found. Add a passkey to enable passwordless authentication.
+            No biometrics found. Add a biometric to enable passwordless authentication.
           </div>
         )}
       </div>

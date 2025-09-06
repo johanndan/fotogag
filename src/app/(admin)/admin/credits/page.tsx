@@ -1,4 +1,6 @@
+// src/app/(admin)/admin/credits/page.tsx
 import "server-only"
+
 import { getDB } from "@/db"
 import {
   creditTransactionTable,
@@ -10,8 +12,8 @@ import {
 import { and, eq, gte, sql } from "drizzle-orm"
 import { saveDefaultAndReferral, saveConversion } from "./actions"
 
-// ✨ shadcn UI (gleicher Look wie bei Users)
-import { SidebarTrigger } from "@/components/ui/sidebar"
+// UI
+import { PageHeader } from "@/components/page-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
@@ -102,15 +104,15 @@ export default async function CreditsPage() {
 
   return (
     <div className="p-6 w-full min-w-0 flex flex-col overflow-hidden">
-      {/* Header wie bei Users: Titel + Sidebar-Trigger */}
-      <div className="flex items-center justify-between gap-2 flex-shrink-0 mb-4">
-        <div className="flex items-center gap-2">
-          <SidebarTrigger className="-ml-1" />
-          <h1 className="text-3xl font-bold">Credits</h1>
-        </div>
-      </div>
+      {/* Header bleibt identisch */}
+      <PageHeader
+        items={[
+          { href: "/admin", label: "Admin" },
+          { href: "/admin/credits", label: "Credits" },
+        ]}
+      />
 
-      <div className="mt-4 space-y-6">
+      <div className="mt-6 space-y-6">
         {/* Creditkäufe */}
         <Card className="shadow-sm">
           <CardHeader>

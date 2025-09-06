@@ -1,3 +1,4 @@
+// ./src/components/nav-main.tsx
 "use client"
 
 import { ChevronRight } from "lucide-react"
@@ -9,7 +10,6 @@ import {
 } from "@/components/ui/collapsible"
 import {
   SidebarGroup,
-  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -26,17 +26,17 @@ type Props = {
   items: NavMainItem[]
 }
 
-export function NavMain({
-  items,
-}: Props) {
+export function NavMain({ items }: Props) {
   const { setOpenMobile } = useSidebar()
 
   return (
     <SidebarGroup>
-      <SidebarGroupLabel>Edit</SidebarGroupLabel>
       <SidebarMenu>
         {items.map((item) => {
-          // If there are no child items, render a direct link
+          const Icon =
+            item.icon as unknown as React.ComponentType<{ className?: string }>
+
+          // Kein Child: direkter Link
           if (!item.items?.length) {
             return (
               <SidebarMenuItem key={item.title}>
@@ -45,7 +45,7 @@ export function NavMain({
                     href={item.url as Route}
                     onClick={() => setOpenMobile(false)}
                   >
-                    {item.icon && <item.icon />}
+                    {Icon ? <Icon className="mr-2 h-4 w-4" /> : null}
                     <span>{item.title}</span>
                   </Link>
                 </SidebarMenuButton>
@@ -53,7 +53,7 @@ export function NavMain({
             )
           }
 
-          // Otherwise render the collapsible menu
+          // Mit Children: Collapsible + Submenu (mit Icons!)
           return (
             <Collapsible
               key={item.title}
@@ -64,34 +64,49 @@ export function NavMain({
               <SidebarMenuItem>
                 <CollapsibleTrigger asChild>
                   <SidebarMenuButton tooltip={item.title}>
-                    {item.icon && <item.icon />}
+                    {Icon ? <Icon className="mr-2 h-4 w-4" /> : null}
                     <span>{item.title}</span>
                     <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
                   </SidebarMenuButton>
                 </CollapsibleTrigger>
+
                 <CollapsibleContent>
                   <SidebarMenuSub>
-                    {item.items?.map((subItem) => (
-                      <SidebarMenuSubItem key={subItem.title}>
-                        <SidebarMenuSubButton asChild>
-                          {subItem.url.startsWith('/') ? (
-                            <Link
-                              href={subItem.url as Route}
-                              onClick={() => setOpenMobile(false)}
-                            >
-                              <span>{subItem.title}</span>
-                            </Link>
-                          ) : (
-                            <a
-                              href={subItem.url}
-                              onClick={() => setOpenMobile(false)}
-                            >
-                              <span>{subItem.title}</span>
-                            </a>
-                          )}
-                        </SidebarMenuSubButton>
-                      </SidebarMenuSubItem>
-                    ))}
+                    {item.items?.map((subItem) => {
+                      const SubIcon =
+                        subItem.icon as unknown as React.ComponentType<{
+                          className?: string
+                        }>
+
+                      return (
+                        <SidebarMenuSubItem key={subItem.title}>
+                          <SidebarMenuSubButton asChild>
+                            {(subItem.url as unknown as string).startsWith("/")
+                              ? (
+                                <Link
+                                  href={subItem.url as Route}
+                                  onClick={() => setOpenMobile(false)}
+                                >
+                                  {SubIcon ? (
+                                    <SubIcon className="mr-2 h-4 w-4" />
+                                  ) : null}
+                                  <span>{subItem.title}</span>
+                                </Link>
+                              ) : (
+                                <a
+                                  href={subItem.url as unknown as string}
+                                  onClick={() => setOpenMobile(false)}
+                                >
+                                  {SubIcon ? (
+                                    <SubIcon className="mr-2 h-4 w-4" />
+                                  ) : null}
+                                  <span>{subItem.title}</span>
+                                </a>
+                              )}
+                          </SidebarMenuSubButton>
+                        </SidebarMenuSubItem>
+                      )
+                    })}
                   </SidebarMenuSub>
                 </CollapsibleContent>
               </SidebarMenuItem>

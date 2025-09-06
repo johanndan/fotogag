@@ -18,7 +18,7 @@ export default async function MarketplacePage() {
         items={[
           {
             href: "/dashboard/marketplace",
-            label: "Update",
+            label: "Marketplace",
           },
         ]}
       />
