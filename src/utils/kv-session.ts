@@ -7,7 +7,12 @@ import { headers } from "next/headers";
 import { getUserFromDB } from "@/utils/auth";
 import { getIP } from "./get-IP";
 import { MAX_SESSIONS_PER_USER } from "@/constants";
+
 const SESSION_PREFIX = "session:";
+
+/** Sliding-Window-Konstanten (30 Tage Inaktivität; Refresh, wenn < 7 Tage übrig) */
+export const MAX_INACTIVITY_MS = 30 * 24 * 60 * 60 * 1000; // 30d
+export const MIN_TTL_REFRESH_MS = 7 * 24 * 60 * 60 * 1000;  // 7d
 
 export function getSessionKey(userId: string, sessionId: string): string {
   return `${SESSION_PREFIX}${userId}:${sessionId}`;
@@ -24,6 +29,7 @@ type KVSessionUser = Exclude<Awaited<ReturnType<typeof getUserFromDB>>, undefine
 export interface KVSession {
   id: string;
   userId: string;
+  /** absolute Ablauffrist in ms since epoch (spiegelt die gesetzte TTL zu Schreibzeit wider) */
   expiresAt: number;
   createdAt: number;
   user: KVSessionUser & {
@@ -54,10 +60,34 @@ export async function getKV() {
   return env.NEXT_INC_CACHE_KV;
 }
 
+/* --------------------------------- Helpers -------------------------------- */
+
+function ttlSecondsFromDate(expiresAt: Date): number {
+  const ms = expiresAt.getTime() - Date.now();
+  // Cloudflare KV erfordert eine Mindest-TTL; 60s ist safe default.
+  return Math.max(60, Math.floor(ms / 1000));
+}
+
+/** Liefert die verbleibende Laufzeit einer Session in Millisekunden (kann < 0 sein) */
+export function getRemainingTtlMs(session: Pick<KVSession, "expiresAt">): number {
+  return session.expiresAt - Date.now();
+}
+
+/** Sollten wir die TTL „anfassen“? Default: wenn < 7 Tage übrig sind. */
+export function shouldRefreshSessionTTL(
+  session: Pick<KVSession, "expiresAt">,
+  thresholdMs: number = MIN_TTL_REFRESH_MS
+): boolean {
+  return getRemainingTtlMs(session) < thresholdMs;
+}
+
 export interface CreateKVSessionParams extends Omit<KVSession, "id" | "createdAt" | "expiresAt"> {
   sessionId: string;
+  /** initiale Ablaufzeit (z. B. jetzt + 30d) */
   expiresAt: Date;
 }
+
+/* --------------------------------- Create --------------------------------- */
 
 export async function createKVSession({
   sessionId,
@@ -73,6 +103,7 @@ export async function createKVSession({
   if (!kv) {
     throw new Error("Can't connect to KV store");
   }
+
   const session: KVSession = {
     id: sessionId,
     userId,
@@ -82,12 +113,13 @@ export async function createKVSession({
     city: cf?.city,
     continent: cf?.continent,
     ip: await getIP(),
-    userAgent: headersList.get('user-agent'),
+    userAgent: headersList.get("user-agent"),
     user,
     authenticationType,
     passkeyCredentialId,
     version: CURRENT_SESSION_VERSION,
   };
+
   // Session limit enforcement
   const existingSessions = await getAllSessionIdsOfUser(userId);
   if (existingSessions.length >= MAX_SESSIONS_PER_USER) {
@@ -98,18 +130,19 @@ export async function createKVSession({
       return a.absoluteExpiration.getTime() - b.absoluteExpiration.getTime();
     });
     const oldestSessionKey = sortedSessions?.[0]?.key;
-    const oldestSessionId = oldestSessionKey?.split(':')?.[2];
+    const oldestSessionId = oldestSessionKey?.split(":")?.[2];
     await deleteKVSession(oldestSessionId, userId);
   }
-  await kv.put(
-    getSessionKey(userId, sessionId),
-    JSON.stringify(session),
-    {
-      expirationTtl: Math.floor((expiresAt.getTime() - Date.now()) / 1000),
-    },
-  );
+
+  // set TTL anhand expiresAt (sliding TTL wird über touch/update verlängert)
+  await kv.put(getSessionKey(userId, sessionId), JSON.stringify(session), {
+    expirationTtl: ttlSecondsFromDate(expiresAt),
+  });
+
   return session;
 }
+
+/* ---------------------------------- Read ---------------------------------- */
 
 export async function getKVSession(sessionId: string, userId: string): Promise<KVSession | null> {
   const kv = await getKV();
@@ -118,7 +151,10 @@ export async function getKVSession(sessionId: string, userId: string): Promise<K
   }
   const sessionStr = await kv.get(getSessionKey(userId, sessionId));
   if (!sessionStr) return null;
+
   const session = JSON.parse(sessionStr) as KVSession;
+
+  // Re-hydrate Date Felder aus user
   if (session?.user?.createdAt) {
     session.user.createdAt = new Date(session.user.createdAt);
   }
@@ -134,42 +170,76 @@ export async function getKVSession(sessionId: string, userId: string): Promise<K
   return session;
 }
 
-export async function updateKVSession(sessionId: string, userId: string, expiresAt: Date): Promise<KVSession | null> {
+/* --------------------------------- Update --------------------------------- */
+
+export async function updateKVSession(
+  sessionId: string,
+  userId: string,
+  /** neue absolute Ablauffrist (z. B. jetzt + 30 Tage) */
+  expiresAt: Date
+): Promise<KVSession | null> {
   const session = await getKVSession(sessionId, userId);
   if (!session) return null;
+
   const updatedUser = await getUserFromDB(userId);
   if (!updatedUser) {
     throw new Error("User not found");
   }
+
   const updatedSession: KVSession = {
     ...session,
     version: CURRENT_SESSION_VERSION,
     expiresAt: expiresAt.getTime(),
     user: updatedUser,
   };
+
   const kv = await getKV();
   if (!kv) {
     throw new Error("Can't connect to KV store");
   }
-  await kv.put(
-    getSessionKey(userId, sessionId),
-    JSON.stringify(updatedSession),
-    {
-      expirationTtl: Math.floor((expiresAt.getTime() - Date.now()) / 1000),
-    },
-  );
+
+  await kv.put(getSessionKey(userId, sessionId), JSON.stringify(updatedSession), {
+    expirationTtl: ttlSecondsFromDate(expiresAt),
+  });
+
   return updatedSession;
 }
 
-export async function deleteKVSession(sessionId: string, userId: string): Promise<void> {
+/**
+ * Sliding-Refresh: verlängert die Session-Expiry um MAX_INACTIVITY_MS ab jetzt,
+ * wenn die verbleibende TTL unter den Schwellwert fällt (Default: 7 Tage).
+ * Keine Änderung, wenn genug TTL übrig ist.
+ */
+export async function touchKVSession(
+  sessionId: string,
+  userId: string,
+  opts?: { thresholdMs?: number; extendMs?: number }
+): Promise<KVSession | null> {
   const session = await getKVSession(sessionId, userId);
-  if (!session) return;
+  if (!session) return null;
+
+  const threshold = opts?.thresholdMs ?? MIN_TTL_REFRESH_MS;
+  if (!shouldRefreshSessionTTL(session, threshold)) {
+    return session; // nichts zu tun
+  }
+
+  const extendMs = opts?.extendMs ?? MAX_INACTIVITY_MS;
+  const nextExpire = new Date(Date.now() + extendMs);
+  return updateKVSession(sessionId, userId, nextExpire);
+}
+
+/* --------------------------------- Delete --------------------------------- */
+
+export async function deleteKVSession(sessionId: string | undefined, userId: string): Promise<void> {
+  if (!sessionId) return;
   const kv = await getKV();
   if (!kv) {
     throw new Error("Can't connect to KV store");
   }
   await kv.delete(getSessionKey(userId, sessionId));
 }
+
+/* ------------------------------ List sessions ----------------------------- */
 
 export async function getAllSessionIdsOfUser(userId: string) {
   const kv = await getKV();
@@ -196,12 +266,18 @@ export async function updateAllSessionsOfUser(userId: string) {
   }
   const newUserData = await getUserFromDB(userId);
   if (!newUserData) return;
+
   for (const sessionObj of sessions) {
     const session = await kv.get(sessionObj.key);
     if (!session) continue;
+
     const sessionData = JSON.parse(session) as KVSession;
+
     if (sessionObj.absoluteExpiration && sessionObj.absoluteExpiration.getTime() > Date.now()) {
-      const ttlInSeconds = Math.floor((sessionObj.absoluteExpiration.getTime() - Date.now()) / 1000);
+      const ttlInSeconds = Math.max(
+        60,
+        Math.floor((sessionObj.absoluteExpiration.getTime() - Date.now()) / 1000)
+      );
       await kv.put(
         sessionObj.key,
         JSON.stringify({
@@ -209,7 +285,7 @@ export async function updateAllSessionsOfUser(userId: string) {
           user: newUserData,
           version: CURRENT_SESSION_VERSION,
         }),
-        { expirationTtl: ttlInSeconds },
+        { expirationTtl: ttlInSeconds }
       );
     }
   }

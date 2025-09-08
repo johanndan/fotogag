@@ -1,4 +1,4 @@
-// /src/app/(settings)/settings/settings-form.tsx
+// /src/app/(settings)/settings/security/passkey.client.tsx
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -47,7 +47,8 @@ import {
   deleteAllSessionsOfUserAction,
 } from "@/app/(settings)/settings/sessions/sessions.actions";
 
-import ThemeCards from "@/components/theme-cards";
+// Biometrics-UI
+import { PasskeysList } from "@/app/(settings)/settings/security/passkey.client";
 
 /* ------------------------------ Konstanten ------------------------------- */
 const SIGNIN_URL = "https://photogag.ai/";
@@ -204,22 +205,11 @@ export function SettingsForm() {
 
     // 4) Logout (Cookies serverseitig löschen) + externer Redirect auf Startseite
     await doLogout();
-    window.location.replace(SIGNIN_URL); // ersetzt History-Eintrag (kein Zurück). :contentReference[oaicite:1]{index=1}
+    window.location.replace(SIGNIN_URL);
   };
 
   return (
     <div className="space-y-6">
-      {/* THEME-Auswahl */}
-      <Card id="theme">
-        <CardHeader>
-          <CardTitle>Theme</CardTitle>
-          <CardDescription>Wähle hell, dunkel oder Systemmodus.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ThemeCards />
-        </CardContent>
-      </Card>
-
       {/* Profil-Einstellungen */}
       <Card>
         <CardHeader>
@@ -263,9 +253,11 @@ export function SettingsForm() {
                 <FormMessage />
               </FormItem>
 
-              {/* Button-Zeile: links Save, rechts Delete */}
+              {/* Button-Zeile: links Save (schwarz), rechts Delete (destructive) */}
               <div className="flex items-center justify-between">
-                <Button type="submit">Save changes</Button>
+                <Button type="submit" className="bg-black text-white hover:bg-black/90">
+                  Save changes
+                </Button>
 
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
@@ -303,40 +295,40 @@ export function SettingsForm() {
         </CardContent>
       </Card>
 
-      {/* Unterer Bereich: zwei Karten nebeneinander */}
-      <div className="grid gap-6 sm:grid-cols-2">
-        {/* Change Password – halb so groß */}
-        <Card>
-          <CardHeader className="px-4 py-3">
-            <CardTitle>Change Password</CardTitle>
-            <CardDescription>
-              Set a new password. We’ll send a secure link to your email address.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="px-4 py-3">
-            <Button
-              asChild
-              variant="default"
-              className="bg-black text-white hover:bg-black/90"
-            >
-              <Link href={`/forgot-password?email=${encodeURIComponent(session.user.email ?? "")}`}>
-                Send reset link
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
+      {/* Change Password – 100% Breite, Button schwarz/links */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Change Password</CardTitle>
+          <CardDescription>
+            Set a new password. We’ll send a secure link to your email address.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button
+            asChild
+            className="bg-black text-white hover:bg-black/90"
+          >
+            <Link href={`/forgot-password?email=${encodeURIComponent(session.user.email ?? "")}`}>
+              Send reset link
+            </Link>
+          </Button>
+        </CardContent>
+      </Card>
 
-        {/* Platzhalter rechts */}
-        <Card>
-          <CardHeader className="px-4 py-3">
-            <CardTitle>Biometric login</CardTitle>
-            <CardDescription>Platzhalter</CardDescription>
-          </CardHeader>
-          <CardContent className="px-4 py-3 text-sm text-muted-foreground">
-            <p>Coming soon.</p>
-          </CardContent>
-        </Card>
-      </div>
+      {/* Biometric login – letzter Bereich, 100% Breite, mit integrierter PasskeysList */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Biometric login</CardTitle>
+          <CardDescription>Register and manage your biometrics (passkeys).</CardDescription>
+        </CardHeader>
+        <CardContent className="text-sm">
+          <PasskeysList
+            passkeys={[]}
+            currentPasskeyId={null}
+            email={session.user.email ?? null}
+          />
+        </CardContent>
+      </Card>
     </div>
   );
 }

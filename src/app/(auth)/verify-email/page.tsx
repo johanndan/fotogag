@@ -1,3 +1,4 @@
+// /src/app/(auth)/verify-email/page.tsx
 import { Metadata } from "next";
 import { getSessionFromCookie } from "@/utils/auth";
 import { redirect } from "next/navigation";

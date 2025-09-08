@@ -1,7 +1,6 @@
-// src/components/nav-user.tsx
 "use client"
 
-import { Bell, LogOut, ChevronsUpDown, Settings as SettingsIcon } from "lucide-react"
+import { Bell, LogOut, ChevronsUpDown, Settings as SettingsIcon, User } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -27,8 +26,9 @@ import type { Route } from "next"
 
 const ROUTES = {
   root: "/" as const,
-  settings: "/settings" as const,
-  update: "/dashboard/update" as const, // für Klick auf Credits
+  settings: "/settings" as const,               // bleibt: Profil-Einstellungen
+  settingsExtra: "/settings/settings" as const, // NEU: zusätzliche Settings-Seite
+  update: "/dashboard/update" as const,
 } satisfies Record<string, Route>
 
 export function NavUser() {
@@ -115,11 +115,24 @@ export function NavUser() {
             sideOffset={4}
           >
             <DropdownMenuGroup>
+              {/* Settings → Profil (mit Icon) */}
               <DropdownMenuItem
                 className="cursor-pointer"
                 onClick={() => {
                   setOpenMobile(false)
                   router.push(ROUTES.settings)
+                }}
+              >
+                <User />
+                Profil
+              </DropdownMenuItem>
+
+              {/* NEU: zusätzlicher Menüpunkt 'Settings' darunter */}
+              <DropdownMenuItem
+                className="cursor-pointer"
+                onClick={() => {
+                  setOpenMobile(false)
+                  router.push(ROUTES.settingsExtra)
                 }}
               >
                 <SettingsIcon />
