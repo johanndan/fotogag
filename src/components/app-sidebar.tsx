@@ -4,12 +4,9 @@
 import { type ComponentType } from "react";
 import type { Route } from "next";
 import {
-  Settings2,
   ShoppingCart,
   SquareTerminal,
   CreditCard,
-  Lock,
-  Smartphone,
 } from "lucide-react";
 
 import { NavMain } from "@/components/nav-main";
@@ -45,13 +42,7 @@ type Data = {
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { session } = useSessionStore();
 
-  // Unterpunkte für "Settings" – mit Icons
-  const settingsItems = [
-    { title: "Biometric login", url: "/settings/security", icon: Lock },
-    { title: "Sessions", url: "/settings/sessions", icon: Smartphone },
-  ] satisfies NavItem[];
-
-  // Hauptnavigation ohne `as Route`-Assertions
+  // Hauptnavigation (ohne "In work" und ohne Unterpunkte)
   const navMain = [
     {
       title: "Home",
@@ -68,12 +59,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       title: "Update",
       url: "/dashboard/update" as Route,
       icon: CreditCard,
-    },
-    {
-      title: "In work",
-      url: "/settings",
-      icon: Settings2,
-      items: settingsItems,
     },
   ] satisfies NavMainItem[];
 

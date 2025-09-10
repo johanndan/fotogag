@@ -31,6 +31,22 @@ import { PASSKEY_AUTHENTICATOR_IDS } from "@/utils/passkey-authenticator-ids";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 import type { ParsedUserAgent } from "@/types";
+import { useSessionStore } from "@/state/session";
+
+/* --------------------------------- Const --------------------------------- */
+const SIGNIN_URL = "https://photogag.ai/";
+
+/* ------------------------------ Small helpers ---------------------------- */
+async function doLogout(): Promise<void> {
+  try {
+    const res = await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+    if (!res.ok) {
+      await fetch("/api/auth/logout", { method: "GET", credentials: "include" });
+    }
+  } catch {
+    // ignore – we redirect anyway
+  }
+}
 
 /* -------------------------------------------------------------------------- */
 /*                              Register-Button                               */
@@ -82,7 +98,7 @@ function PasskeyRegistrationButton({
     <Button
       onClick={handleRegister}
       disabled={isRegistering}
-      className={cn("bg-black text-white hover:bg-black/90", className)}
+      className={cn(className)}
     >
       {isRegistering ? "Registering..." : "Register Biometric"}
     </Button>
@@ -104,6 +120,7 @@ interface Passkey {
 
 interface PasskeysListProps {
   passkeys: Passkey[];
+  /** Die credentialId des aktuell verwendeten Passkeys, wenn per Biometric eingeloggt */
   currentPasskeyId: string | null;
   email: string | null;
 }
@@ -111,6 +128,9 @@ interface PasskeysListProps {
 export function PasskeysList({ passkeys, currentPasskeyId, email }: PasskeysListProps) {
   const router = useRouter();
   const dialogCloseRef = useRef<HTMLButtonElement>(null);
+  const { session } = useSessionStore();
+
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const { execute: deletePasskey } = useServerAction(deletePasskeyAction, {
     onSuccess: () => {
@@ -121,6 +141,37 @@ export function PasskeysList({ passkeys, currentPasskeyId, email }: PasskeysList
   });
 
   const isCurrentPasskey = (p: Passkey) => p.credentialId === currentPasskeyId;
+  const isBiometricAuth = session?.authenticationType === "passkey";
+
+  /** Haupt-Handler: conditionale Löschlogik */
+  const handleDeleteBiometric = async (p: Passkey) => {
+    try {
+      setDeletingId(p.id);
+
+      // Fall A: User ist via Biometric eingeloggt und löscht genau dieses Biometric
+      if (isBiometricAuth && isCurrentPasskey(p)) {
+        // 1) Biometric löschen (solange Session noch gültig ist)
+        await deletePasskey({ credentialId: p.credentialId });
+
+        // 2) Logout (Cookies serverseitig weg)
+        await doLogout();
+
+        // 3) Hard-Redirect: Startseite (kein "Zurück" zur geschützten Seite)
+        window.location.replace(SIGNIN_URL); // ersetzt History-Eintrag. MDN bestätigt das Verhalten.
+        // eslint-disable-next-line no-useless-return
+        return;
+      }
+
+      // Fall B: User ist NICHT via Biometric eingeloggt -> direkt löschen
+      await deletePasskey({ credentialId: p.credentialId });
+      // Dialog schließt sich via onSuccess, UI wird dort refreshed
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to delete biometric");
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -146,83 +197,92 @@ export function PasskeysList({ passkeys, currentPasskeyId, email }: PasskeysList
 
       {/* Einträge */}
       <div className="space-y-4">
-        {passkeys.map((passkey) => (
-          <Card
-            key={passkey.id}
-            className={cn(
-              !isCurrentPasskey(passkey)
-                ? "bg-card/40"
-                : "border-3 border-primary/20 shadow-lg bg-secondary/30"
-            )}
-          >
-            <CardHeader>
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                {/* Linke Seite: Infos */}
-                <div className="space-y-2">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2">
-                    <CardTitle className="flex flex-wrap items-center gap-2 text-base">
-                      { (passkey.aaguid &&
+        {passkeys.map((passkey) => {
+          const current = isCurrentPasskey(passkey);
+          const showLogoutNotice = isBiometricAuth && current;
+
+          return (
+            <Card
+              key={passkey.id}
+              className={cn(
+                !current ? "bg-card/40" : "border-3 border-primary/20 shadow-lg bg-secondary/30"
+              )}
+            >
+              <CardHeader>
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  {/* Linke Seite: Infos */}
+                  <div className="space-y-2">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2">
+                      <CardTitle className="flex flex-wrap items-center gap-2 text-base">
+                        {(passkey.aaguid &&
                           (PASSKEY_AUTHENTICATOR_IDS as Record<string, string>)[passkey.aaguid]) ||
-                        "Unknown Authenticator App" }
-                      {isCurrentPasskey(passkey) && <Badge>Current Biometric</Badge>}
-                    </CardTitle>
-                    <div className="text-sm text-muted-foreground whitespace-nowrap">
-                      · {formatDistanceToNow(passkey.createdAt)} ago
+                          "Unknown Authenticator App"}
+                        {current && <Badge>Current Biometric</Badge>}
+                      </CardTitle>
+                      <div className="text-sm text-muted-foreground whitespace-nowrap">
+                        · {formatDistanceToNow(passkey.createdAt)} ago
+                      </div>
                     </div>
+
+                    {passkey.parsedUserAgent && (
+                      <CardDescription className="text-sm">
+                        {passkey.parsedUserAgent.browser.name ?? "Unknown browser"}{" "}
+                        {passkey.parsedUserAgent.browser.major ?? "Unknown version"} on{" "}
+                        {passkey.parsedUserAgent.device.vendor ?? "Unknown device"}{" "}
+                        {passkey.parsedUserAgent.device.model ?? "Unknown model"}{" "}
+                        {passkey.parsedUserAgent.device.type ?? "Unknown type"} (
+                        {passkey.parsedUserAgent.os.name ?? "Unknown OS"}{" "}
+                        {passkey.parsedUserAgent.os.version ?? "Unknown version"})
+                      </CardDescription>
+                    )}
                   </div>
 
-                  {passkey.parsedUserAgent && (
-                    <CardDescription className="text-sm">
-                      {passkey.parsedUserAgent.browser.name ?? "Unknown browser"}{" "}
-                      {passkey.parsedUserAgent.browser.major ?? "Unknown version"} on{" "}
-                      {passkey.parsedUserAgent.device.vendor ?? "Unknown device"}{" "}
-                      {passkey.parsedUserAgent.device.model ?? "Unknown model"}{" "}
-                      {passkey.parsedUserAgent.device.type ?? "Unknown type"} (
-                      {passkey.parsedUserAgent.os.name ?? "Unknown OS"}{" "}
-                      {passkey.parsedUserAgent.os.version ?? "Unknown version"})
-                    </CardDescription>
-                  )}
-                </div>
-
-                {/* Rechte Seite: roter Delete-Button (immer, wenn ein Eintrag existiert) */}
-                <div className="sm:pt-1">
-                  <Dialog>
-                    <DialogTrigger asChild>
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        className="w-full sm:w-auto"
-                        title="Delete this biometric"
-                      >
-                        Delete biometric
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>Delete biometric?</DialogTitle>
-                        <DialogDescription>
-                          This will remove this biometric from your account. This action cannot be undone.
-                        </DialogDescription>
-                      </DialogHeader>
-                      <DialogFooter className="mt-6 sm:mt-0">
-                        <DialogClose ref={dialogCloseRef} asChild>
-                          <Button variant="outline">Cancel</Button>
-                        </DialogClose>
+                  {/* Rechte Seite: roter Delete-Button */}
+                  <div className="sm:pt-1">
+                    <Dialog>
+                      <DialogTrigger asChild>
                         <Button
+                          size="sm"
                           variant="destructive"
-                          className="mb-4 sm:mb-0"
-                          onClick={() => deletePasskey({ credentialId: passkey.credentialId })}
+                          className="w-full sm:w-auto"
+                          title="Delete this biometric"
+                          disabled={deletingId === passkey.id}
                         >
-                          Delete biometric
+                          {deletingId === passkey.id ? "Deleting…" : "Delete biometric"}
                         </Button>
-                      </DialogFooter>
-                    </DialogContent>
-                  </Dialog>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Delete biometric?</DialogTitle>
+                          <DialogDescription>
+                            {showLogoutNotice
+                              ? "You are currently signed in with this biometric. We'll sign you out and redirect you to the homepage, then remove this biometric. This action cannot be undone."
+                              : "This will remove this biometric from your account. This action cannot be undone."}
+                          </DialogDescription>
+                        </DialogHeader>
+                        <DialogFooter className="mt-6 sm:mt-0">
+                          <DialogClose ref={dialogCloseRef} asChild>
+                            <Button variant="outline" disabled={deletingId === passkey.id}>
+                              Cancel
+                            </Button>
+                          </DialogClose>
+                          <Button
+                            variant="destructive"
+                            className="mb-4 sm:mb-0"
+                            onClick={() => handleDeleteBiometric(passkey)}
+                            disabled={deletingId === passkey.id}
+                          >
+                            {deletingId === passkey.id ? "Deleting…" : "Delete biometric"}
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
                 </div>
-              </div>
-            </CardHeader>
-          </Card>
-        ))}
+              </CardHeader>
+            </Card>
+          );
+        })}
 
         {passkeys.length === 0 && (
           <div className="text-center text-muted-foreground">

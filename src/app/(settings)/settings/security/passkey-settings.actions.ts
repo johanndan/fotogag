@@ -1,3 +1,4 @@
+// /src/app/(settings)/settings/security/passkey-settings.actions.ts
 "use server";
 
 import { z } from "zod";
@@ -26,7 +27,6 @@ export const generateRegistrationOptionsAction = createServerAction()
   .input(generateRegistrationOptionsSchema)
   .handler(async ({ input }) => {
     return withRateLimit(async () => {
-      // Check if user is logged in and email is verified
       const session = await requireVerifiedEmail();
 
       const db = getDB();
@@ -38,22 +38,17 @@ export const generateRegistrationOptionsAction = createServerAction()
         throw new ZSAError("NOT_FOUND", "User not found");
       }
 
-      // Verify the email matches the logged-in user
       if (user.id !== session?.user?.id) {
         throw new ZSAError("FORBIDDEN", "You can only register passkeys for your own account");
       }
 
-      // Check if user has reached the passkey limit
       const existingPasskeys = await db
         .select()
         .from(passKeyCredentialTable)
         .where(eq(passKeyCredentialTable.userId, user.id));
 
       if (existingPasskeys.length >= 5) {
-        throw new ZSAError(
-          "FORBIDDEN",
-          "You have reached the maximum limit of 5 passkeys"
-        );
+        throw new ZSAError("FORBIDDEN", "You have reached the maximum limit of 5 passkeys");
       }
 
       const options = await generatePasskeyRegistrationOptions(user.id, input.email);
@@ -71,7 +66,6 @@ export const verifyRegistrationAction = createServerAction()
   .input(verifyRegistrationSchema)
   .handler(async ({ input }) => {
     return withRateLimit(async () => {
-      // Check if user is logged in and email is verified
       const session = await requireVerifiedEmail();
 
       const db = getDB();
@@ -83,7 +77,6 @@ export const verifyRegistrationAction = createServerAction()
         throw new ZSAError("NOT_FOUND", "User not found");
       }
 
-      // Verify the email matches the logged-in user
       if (user.id !== session?.user?.id) {
         throw new ZSAError("FORBIDDEN", "You can only register passkeys for your own account");
       }
@@ -95,6 +88,7 @@ export const verifyRegistrationAction = createServerAction()
         userAgent: (await headers()).get("user-agent"),
         ipAddress: await getIP(),
       });
+
       await createAndStoreSession(user.id, "passkey", input.response.id);
       return { success: true };
     }, RATE_LIMITS.SETTINGS);
@@ -109,41 +103,43 @@ export const deletePasskeyAction = createServerAction()
   .handler(async ({ input }) => {
     return withRateLimit(async () => {
       const session = await requireVerifiedEmail();
-
-      // Prevent deletion of the current passkey
-      if (session?.passkeyCredentialId === input.credentialId) {
-        throw new ZSAError(
-          "FORBIDDEN",
-          "Cannot delete the current passkey"
-        );
-      }
-
       const db = getDB();
 
-      // Get all user's passkeys
+      // Alle Passkeys des Users laden (für "letzter Passkey"-Schutz)
       const passkeys = await db
         .select()
         .from(passKeyCredentialTable)
         .where(eq(passKeyCredentialTable.userId, session?.user?.id ?? ""));
 
-      // Get full user data to check password
+      // Vollständigen User holen (Passwort-Check)
       const user = await db.query.userTable.findFirst({
         where: eq(userTable.id, session?.user?.id ?? ""),
-      }) as User;
+      }) as User | undefined;
 
-      // Check if this is the last passkey and if the user has a password
-      if (passkeys.length === 1 && !user.passwordHash) {
+      // Sicherheits-Check: letzter Passkey ohne Passwort -> blockieren
+      const isLastPasskey =
+        passkeys.length === 1 && passkeys[0]?.credentialId === input.credentialId;
+      const hasPassword = !!user?.passwordHash;
+
+      if (isLastPasskey && !hasPassword) {
         throw new ZSAError(
           "FORBIDDEN",
           "Cannot delete the last passkey when no password is set"
         );
       }
 
+      // Merken, ob der aktuelle Login über dieses Passkey läuft
+      const deletedCurrent =
+        session?.authenticationType === "passkey" &&
+        session?.passkeyCredentialId === input.credentialId;
+
+      // Passkey löschen (auch wenn es das aktuell genutzte ist)
       await db
         .delete(passKeyCredentialTable)
         .where(eq(passKeyCredentialTable.credentialId, input.credentialId));
 
-      return { success: true };
+      // Client kümmert sich um Logout + Redirect (replace)
+      return { success: true, deletedCurrent };
     }, RATE_LIMITS.SETTINGS);
   });
 
