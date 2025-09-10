@@ -1,3 +1,4 @@
+// src/app/(settings)/settings/settings-form.tsx
 "use client";
 
 import React, { useEffect, useState } from "react";
@@ -13,7 +14,7 @@ import {
   Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardDescription, CardHeader} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -46,6 +47,7 @@ import type { ParsedUserAgent, SessionWithMeta } from "@/types";
 
 /* ------------------------------ Konstanten ------------------------------- */
 const SIGNIN_URL = "https://photogag.ai/";
+const CLOSE_SETTINGS_URL = "https://photogag.ai/dashboard";
 
 /* ------------------------------ Prop-Typen -------------------------------- */
 type PasskeyForProps = {
@@ -214,6 +216,11 @@ export function SettingsForm({ passkeys, currentPasskeyId, email }: SettingsForm
     window.location.replace(SIGNIN_URL);
   };
 
+  // Close Menu Button -> lädt direkt die Settings-URL neu
+  const handleCloseMenu = () => {
+    window.location.assign(CLOSE_SETTINGS_URL);
+  };
+
   return (
     <div className="space-y-4">
       <Accordion type="single" collapsible defaultValue="profile">
@@ -324,7 +331,7 @@ export function SettingsForm({ passkeys, currentPasskeyId, email }: SettingsForm
           </AccordionContent>
         </AccordionItem>
 
-        {/* Logged-in devices (ehem. Sessions) */}
+        {/* Logged-in devices */}
         <AccordionItem value="devices">
           <AccordionTrigger className="text-left">Logged-in devices</AccordionTrigger>
           <AccordionContent>
@@ -393,6 +400,13 @@ export function SettingsForm({ passkeys, currentPasskeyId, email }: SettingsForm
           </AccordionContent>
         </AccordionItem>
       </Accordion>
+
+      {/* Close Menu Button – mittig & fett */}
+      <div className="mt-8 flex justify-center">
+        <Button onClick={handleCloseMenu} className="font-bold">
+          Close Menu
+        </Button>
+      </div>
     </div>
   );
 }
