@@ -8,8 +8,8 @@ const CSP = [
   "object-src 'none'",
 
   // Scripts (Next / Stripe / Turnstile)
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://js.stripe.com https://m.stripe.network https://challenges.cloudflare.com",
-  "script-src-elem 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://js.stripe.com https://m.stripe.network https://challenges.cloudflare.com",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://js.stripe.com https://m.stripe.network https://challenges.cloudflare.com https://static.cloudflareinsights.com",
+  "script-src-elem 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://js.stripe.com https://m.stripe.network https://challenges.cloudflare.com https://static.cloudflareinsights.com",
 
   // Styles
   "style-src 'self' 'unsafe-inline'",
