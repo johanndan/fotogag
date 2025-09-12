@@ -1,4 +1,3 @@
-import { PageHeader } from "@/components/page-header";
 import { Alert } from "@heroui/react";
 import MarketplaceCard from "@/components/marketplace-card";
 import { getSessionFromCookie } from "@/utils/auth";
@@ -14,14 +13,6 @@ export default async function MarketplacePage() {
 
   return (
     <>
-      <PageHeader
-        items={[
-          {
-            href: "/dashboard/marketplace",
-            label: "Marketplace",
-          },
-        ]}
-      />
       <div className="container mx-auto px-5 pb-12">
         <div className="mb-8">
           <h1 className="text-4xl font-bold mt-4">Account Update</h1>

@@ -3,7 +3,6 @@ import { getDB } from '@/db';
 import { referralInvitationTable } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import InviteUserForm from '@/components/invite-user-form';
-import { PageHeader } from '@/components/page-header';
 
 export default async function InviteDashboardPage() {
   const session = await requireVerifiedEmail();
@@ -18,11 +17,6 @@ export default async function InviteDashboardPage() {
 
   return (
     <div className="p-6 w-full min-w-0 flex flex-col overflow-hidden space-y-6">
-      {/* Header-Zeile wie im Screenshot – ohne Rahmen & ohne Hamburger */}
-      <div className="flex items-center gap-2 -mt-2">
-        {/* Breadcrumb */}
-        <PageHeader items={[{ href: "/dashboard/invite", label: "Invite" }]} />
-      </div>
 
       {/* Inhalt: Karten */}
       <section className="bg-base-100 border border-base-300 rounded-xl shadow-sm p-6">

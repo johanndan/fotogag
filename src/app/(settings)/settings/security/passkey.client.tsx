@@ -158,7 +158,7 @@ export function PasskeysList({ passkeys, currentPasskeyId, email }: PasskeysList
 
         // 3) Hard-Redirect: Startseite (kein "Zurück" zur geschützten Seite)
         window.location.replace(SIGNIN_URL); // ersetzt History-Eintrag. MDN bestätigt das Verhalten.
-        // eslint-disable-next-line no-useless-return
+         
         return;
       }
 

@@ -5,8 +5,12 @@
 @config "../../hero.ts";
 @source '../../node_modules/@heroui/theme/dist/**/*.{js,ts,jsx,tsx}';
 
-@variant dark (&:where(.dark, .dark *));
+/* Dark-Variant wirkt auf .dark UND data-theme="dark" (Tailwind v4) */
+@variant dark (&:where(.dark, .dark *), &:where([data-theme="dark"], [data-theme="dark"] *));
 
+/* ------------------------------------------------------- */
+/*         Basis + Farb-Token (Light)                      */
+/* ------------------------------------------------------- */
 :root {
   --foreground-rgb: 0, 0, 0;
   --background-start-rgb: 214, 219, 220;
@@ -48,6 +52,7 @@
   --chart-4: hsl(43 74% 66%);
   --chart-5: hsl(27 87% 67%);
   --radius: 0.5rem;
+
   --sidebar-background: hsl(0 0% 97%);
   --sidebar-foreground: var(--foreground);
   --sidebar-primary: var(--primary);
@@ -58,7 +63,11 @@
   --sidebar-ring: var(--ring);
 }
 
-.dark {
+/* ------------------------------------------------------- */
+/*         Dark-Token: gelten für .dark ODER data-theme     */
+/* ------------------------------------------------------- */
+:root.dark,
+:root[data-theme="dark"] {
   --background: hsl(217 32% 12%);
   --foreground: hsl(0 0% 98%);
   --card: hsl(240 10% 3.9%);
@@ -78,11 +87,13 @@
   --border: hsl(217 32% 32%);
   --input: hsl(217 32% 32%);
   --ring: hsl(240 4.9% 83.9%);
+
   --chart-1: hsl(220 70% 50%);
   --chart-2: hsl(160 60% 45%);
   --chart-3: hsl(30 80% 55%);
   --chart-4: hsl(280 65% 60%);
   --chart-5: hsl(340 75% 55%);
+
   --sidebar-background: hsl(217 32% 10%);
   --sidebar-foreground: var(--foreground);
   --sidebar-primary: var(--primary);
@@ -93,6 +104,9 @@
   --sidebar-ring: var(--ring);
 }
 
+/* ------------------------------------------------------- */
+/*         Tailwind @theme Mapping                          */
+/* ------------------------------------------------------- */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -132,15 +146,117 @@
   --radius-sm: calc(var(--radius) - 4px);
 }
 
-@utility text-balance {
-  text-wrap: balance;
-}
+@utility text-balance { text-wrap: balance; }
 
 @layer base {
-  * {
-    @apply border-border;
+  * { @apply border-border; }
+  body { @apply bg-background text-foreground; }
+}
+
+/* === Sidebar-Knob: Styles & Animationen (DaisyUI-kompatibel, Theme-sicher) === */
+
+/* Dezente Richtungs-Andeutung auf Hover */
+@keyframes nudge-left {
+  0%, 100% { transform: translateX(0) }
+  50% { transform: translateX(-2px) }
+}
+@keyframes nudge-right {
+  0%, 100% { transform: translateX(0) }
+  50% { transform: translateX( 2px) }
+}
+
+@layer components {
+  /* 1) VERSCHMELZEN: exakt gleiche Farben wie Sidebar (hell & dunkel) */
+  .knob-merge {
+    background: var(--color-sidebar-background);
+    /* Nur zur Content-Seite (rechts) eine feine Linie wie die Sidebar-Border */
+    border-right: 1px solid var(--color-sidebar-border);
+    border-top: 0px solid var(--color-sidebar-border);
+    border-bottom: 0px solid var(--color-sidebar-border);
   }
-  body {
-    @apply bg-background text-foreground;
+
+  /* 2) FORM wie in 2.png: links bündig/nahtlos, rechts rund */
+  .knob-fuse {
+    border-left-width: 0;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    border-top-right-radius: 9999px;
+    border-bottom-right-radius: 9999px;
   }
+
+  /* 3) Keine „aufgesetzte“ Optik: Shadow nur nach rechts (zum Content) */
+  .knob-shadow-right {
+    box-shadow: 14px 0 26px -18px rgba(0,0,0,.18);
+  }
+
+  /* 4) Naht kaschieren: 1px Überlappung auf der linken Kante */
+  .knob-hide-seam::before {
+    content: "";
+    position: absolute;
+    left: -1px; top: 0; bottom: 0; width: 1px;
+    background: var(--color-sidebar-background);
+  }
+
+  /* 5) Optional (Chrome/Edge/WebKit): nur rechte Seite „sichtbar“ maskieren
+        → verstärkt die Illusion, dass links nichts „aufgesetzt“ ist */
+  .knob-right-mask {
+    -webkit-mask-image: linear-gradient(to right, transparent 0, #000 1px);
+            mask-image: linear-gradient(to right, transparent 0, #000 1px);
+  }
+}
+
+/* Safe-Area Utility (für den mobilen Fallback-Knubbel links) */
+@layer utilities {
+  .safe-left { left: max(env(safe-area-inset-left), 0px); }
+}
+
+/* Dezente Richtungs-Andeutung auf Hover */
+@keyframes nudge-left {
+  0%, 100% { transform: translateX(0) }
+  50% { transform: translateX(-2px) }
+}
+@keyframes nudge-right {
+  0%, 100% { transform: translateX(0) }
+  50% { transform: translateX( 2px) }
+}
+
+/* glänzender, silbriger Hintergrund – nutzt deine Theme-Variablen */
+@layer components {
+  /* Gleiche Farbe wie die Sidebar, aber OHNE globale Border */
+  .knob-merge {
+    background: var(--color-sidebar-background);
+  }
+
+  /* Nur die Content-Seite (rechts) soll eine feine Linie haben */
+  .knob-edge {
+    border-right: 1px solid var(--color-sidebar-border);
+  }
+
+  /* Linke Seite bündig/nahtlos, rechts rund */
+  .knob-fuse {
+    border-left-width: 0;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    border-top-right-radius: 9999px;
+    border-bottom-right-radius: 9999px;
+  }
+
+  /* Schatten nur nach rechts (wirkt nicht „aufgesetzt“ zur Sidebar) */
+  .knob-shadow-right {
+    box-shadow: 14px 0 26px -18px rgba(0,0,0,.18);
+  }
+}
+
+@layer utilities {
+  /* Zugänglicher Focus-Ring statt Browser-Outline/Border */
+  .knob-focus { outline: 0; box-shadow: none; }
+  .knob-focus:focus-visible {
+    outline: 0;
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-sidebar-ring) 45%, transparent);
+  }
+}
+
+/* Mobile-Safe-Area helper (nutzt CSS env()) – für Fallback-Knubbel */
+@layer utilities {
+  .safe-left { left: max(env(safe-area-inset-left), 0.5rem); }
 }

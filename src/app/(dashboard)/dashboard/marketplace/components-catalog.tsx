@@ -5,7 +5,6 @@ import ThemeSwitch from "@/components/theme-switch";
 import SeparatorWithText from "@/components/separator-with-text";
 import { NavUser } from "@/components/nav-user";
 import { Button } from "@/components/ui/button";
-import { PageHeader } from "@/components/page-header";
 
 // Import shared metadata used by the server. We extend it here with preview
 // functions that can only run on the client. Keeping the metadata in a
@@ -43,7 +42,7 @@ export const COMPONENTS: MarketplaceComponent[] = COMPONENT_METADATA.map((meta) 
     case "theme-switch":
       return {
         ...meta,
-        preview: () => <ThemeSwitch />, 
+        preview: () => <ThemeSwitch />,
       };
     case "separator-with-text":
       return {
@@ -57,24 +56,12 @@ export const COMPONENTS: MarketplaceComponent[] = COMPONENT_METADATA.map((meta) 
     case "nav-user":
       return {
         ...meta,
-        preview: () => <NavUser />, 
-      };
-    case "page-header":
-      return {
-        ...meta,
-        preview: () => (
-          <PageHeader
-            items={[
-              { href: "/dashboard", label: "Dashboard" },
-              { href: "/dashboard/settings", label: "Settings" },
-            ]}
-          />
-        ),
+        preview: () => <NavUser />,
       };
     case "button":
       return {
         ...meta,
-        preview: () => <Button>Click me</Button>, 
+        preview: () => <Button>Click me</Button>,
       };
     default:
       // Fallback: return metadata without preview to avoid runtime errors.
