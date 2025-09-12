@@ -19,23 +19,58 @@ import {
 } from "@/components/ui/sidebar"
 import { Skeleton } from "@/components/ui/skeleton"
 import useSignOut from "@/hooks/useSignOut"
-import { useRouter } from "next/navigation"
+import { useRouter, usePathname } from "next/navigation"
 import { useSessionStore } from "@/state/session"
 import { getInitials } from "@/utils/name-initials"
 import type { Route } from "next"
+import * as React from "react"
 
 const ROUTES = {
   root: "/" as const,
-  settings: "/settings" as const,               // bleibt: Profil-Einstellungen
-  settingsExtra: "/settings/settings" as const, // NEU: zusätzliche Settings-Seite
+  settings: "/settings" as const,
+  settingsExtra: "/settings/settings" as const,
   update: "/dashboard/update" as const,
 } satisfies Record<string, Route>
+
+// 🔧 Safety helper: falls Radix/shadcn das am Body „vergisst“
+function resetBodyPointerEvents() {
+  try {
+    if (document?.body?.style?.pointerEvents === "none") {
+      document.body.style.pointerEvents = ""
+    }
+  } catch {}
+}
 
 export function NavUser() {
   const { session, isLoading } = useSessionStore()
   const { signOut } = useSignOut()
   const { isMobile, setOpenMobile } = useSidebar()
   const router = useRouter()
+  const pathname = usePathname()
+
+  // 👀 Wenn sich der Pfad ändert, sicherheitshalber Body entsperren
+  React.useEffect(() => {
+    resetBodyPointerEvents()
+  }, [pathname])
+
+  // Kontrolliertes Dropdown → wir können es garantiert schließen, bevor wir navigieren
+  const [open, setOpen] = React.useState(false)
+
+  // Einheitliche, sichere Navigation aus dem Dropdown
+  const go = React.useCallback(
+    (to: Route) => {
+      // 1) Menü schließen & Mobile-Sidebar zu
+      setOpen(false)
+      setOpenMobile(false)
+      // 2) Body-PE entsperren (falls gesetzt)
+      resetBodyPointerEvents()
+      // 3) NACH dem Close/Navigations-Start nochmals entsperren
+      requestAnimationFrame(() => resetBodyPointerEvents())
+      // 4) Navigieren
+      router.push(to)
+    },
+    [router, setOpenMobile]
+  )
 
   if (isLoading) {
     return (
@@ -72,9 +107,8 @@ export function NavUser() {
   return (
     <SidebarMenu>
       <SidebarMenuItem>
-        <DropdownMenu>
+        <DropdownMenu open={open} onOpenChange={(v) => { setOpen(v); if (!v) resetBodyPointerEvents() }}>
           <DropdownMenuTrigger asChild>
-            {/* Sidebar-Bereich mit Name, Email, Credits */}
             <SidebarMenuButton
               size="lg"
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground h-14"
@@ -95,8 +129,7 @@ export function NavUser() {
                   className="w-fit text-[10px]"
                   onClick={(e) => {
                     e.preventDefault()
-                    setOpenMobile(false)
-                    router.push(ROUTES.update)
+                    go(ROUTES.update)
                   }}
                 >
                   {user.currentCredits} credits
@@ -107,33 +140,29 @@ export function NavUser() {
             </SidebarMenuButton>
           </DropdownMenuTrigger>
 
-          {/* Dropdown OHNE doppelte Benutzerinfos */}
           <DropdownMenuContent
             className="w-[var(--radix-dropdown-menu-trigger-width)] min-w-56 rounded-lg"
             side={isMobile ? "bottom" : "right"}
             align="end"
             sideOffset={4}
+            // Beim automatischen Close Fokus zurück → Body entsperren
+            onCloseAutoFocus={() => { resetBodyPointerEvents(); return undefined }}
           >
             <DropdownMenuGroup>
-              {/* Settings → Profil (mit Icon) */}
+              {/* Profil */}
               <DropdownMenuItem
                 className="cursor-pointer"
-                onClick={() => {
-                  setOpenMobile(false)
-                  router.push(ROUTES.settings)
-                }}
+                // ⬇️ WICHTIG: onSelect statt onClick, preventDefault, dann go()
+                onSelect={(e) => { e.preventDefault(); go(ROUTES.settings) }}
               >
                 <User />
                 Profil
               </DropdownMenuItem>
 
-              {/* NEU: zusätzlicher Menüpunkt 'Settings' darunter */}
+              {/* Settings (extra) */}
               <DropdownMenuItem
                 className="cursor-pointer"
-                onClick={() => {
-                  setOpenMobile(false)
-                  router.push(ROUTES.settingsExtra)
-                }}
+                onSelect={(e) => { e.preventDefault(); go(ROUTES.settingsExtra) }}
               >
                 <SettingsIcon />
                 Settings
@@ -148,11 +177,15 @@ export function NavUser() {
             <DropdownMenuSeparator />
 
             <DropdownMenuItem
-              onClick={() => {
-                setOpenMobile(false)
-                signOut().then(() => router.push(ROUTES.root))
-              }}
               className="cursor-pointer"
+              onSelect={async (e) => {
+                e.preventDefault()
+                setOpen(false)
+                setOpenMobile(false)
+                resetBodyPointerEvents()
+                await signOut()
+                router.push(ROUTES.root)
+              }}
             >
               <LogOut />
               Log out
